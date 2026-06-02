@@ -137,9 +137,10 @@ derive_dbt_target() {
       DBT_DERIVED_WAREHOUSE="duckdb"
       _p="$(_yaml_output_field "$_pyml" "$_prof" "$_tgt" path)"
       case "$_p" in
-        \~/*)  _p="$HOME/${_p#\~/}" ;;    # home-relative
-        /*|"") : ;;                       # absolute or empty — leave as-is
-        *)     _p="$(dbt_dir)/$_p" ;;     # relative -> resolve vs. the project dir
+        \~/*)         _p="$HOME/${_p#\~/}" ;;   # home-relative
+        /*|"")        : ;;                      # absolute or empty — leave as-is
+        :memory:|*:*) : ;;                      # :memory: / md: / motherduck: — a DuckDB sentinel or URI, not a filesystem path
+        *)            _p="$(dbt_dir)/$_p" ;;    # relative -> resolve vs. the project dir
       esac
       DBT_DERIVED_DUCKDB="$_p"
       ;;

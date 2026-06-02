@@ -1,0 +1,14 @@
+# Synthetic test profiles.yml — duckdb targets whose `path:` is NOT a filesystem
+# path: the `:memory:` sentinel (active) and a `md:` MotherDuck URI. Both must pass
+# through the warehouse-derive unmodified (never resolved against the project dir).
+jaffle_shop:
+  target: mem
+  outputs:
+    mem:
+      type: duckdb
+      path: ':memory:'
+      threads: 4
+    md:
+      type: duckdb
+      path: 'md:test_db'
+      threads: 4
