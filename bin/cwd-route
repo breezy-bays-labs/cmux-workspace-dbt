@@ -37,7 +37,10 @@ fi
 
 EDIT="$(state_get edit_pane)"
 TOOLS="$(state_get tools_pane)"
-[ -n "$EDIT" ] || { echo "cwd-route: no edit_pane state for $(ws_key)" >&2; exit 1; }
+# edit_pane is required only by the paths that drive the helix pane (.sql, dir) —
+# guarded inside route_sql/route_dir. A non-model file still defers to open-helix.sh
+# and a .csv still uses tools_pane, so a dbt ws with a missing edit_pane degrades
+# gracefully instead of failing every open.
 
 # Spawn a fresh terminal surface in <pane>, run a command string, title the tab.
 open_in_pane() { # <pane> <title> <cmdline>
@@ -61,6 +64,7 @@ focus_existing() { # <tab-title>
 
 route_sql() {
   _sql="$1"; _model="$(basename "$_sql" .sql)"
+  [ -n "$EDIT" ] || { echo "cwd-route: no edit_pane state for $(ws_key)" >&2; return 1; }
   if focus_existing "hx: $_model"; then echo "focused hx: $_model"; return 0; fi
   _yml="$(fd -e yml -e yaml . "$(dirname "$_sql")" --max-depth 1 2>/dev/null | head -1 || true)"
   if [ -n "$_yml" ]; then
@@ -80,6 +84,7 @@ route_csv() {
 
 route_dir() {
   _d="$1"; _base="$(basename "$_d")"
+  [ -n "$EDIT" ] || { echo "cwd-route: no edit_pane state for $(ws_key)" >&2; return 1; }
   # Glob expands in the target surface's shell (single-quote the dir, /* outside).
   open_in_pane "$EDIT" "hx: $_base/" "$DBT_WS_BIN/hx-wrap '$_d'/*"
   echo "opened dir: $_base/"

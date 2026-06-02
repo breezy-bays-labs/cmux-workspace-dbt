@@ -294,15 +294,19 @@ echo "T20: cwd register dbt writes the UUID-keyed marker + pane refs (from cmux 
 setup
 export DBT_WS_WORKSPACE="uuid-dbt-9999"
 rm -rf "$DBT_WS_STATE/workspace_test"
+# REAL cmux titles at register time: a freshly-launched layout surface is titled
+# "<cwd>> <command>" (helix sets no title) and the tree pane "Yazi: <cwd>" — NOT
+# the post-open "hx: <model>" form (that rename happens later, in cwd-route). The
+# editor pane is found by its launch command `hx-wrap`, not a leading "hx".
 cat > "$WORK/tree" <<'TREE'
 workspace workspace:uuid-dbt-9999 "dbt: wt"
 ├── pane pane:91
-│   └── surface surface:1 [terminal] "yazi"
+│   └── surface surface:1 [terminal] "Yazi: /tmp/wt"
 ├── pane pane:92
-│   └── surface surface:2 [terminal] "hx: stg_orders"
+│   └── surface surface:2 [terminal] "/tmp/wt> hx-wrap"
 └── pane pane:93
-    ├── surface surface:3 [terminal] "cwd doctor"
-    └── surface surface:4 [terminal] "cwd register dbt"
+    ├── surface surface:3 [terminal] "/tmp/wt"
+    └── surface surface:4 [terminal] "/tmp/wt> cwd register dbt"
 TREE
 export DWS_TEST_TREE="$WORK/tree"
 KEY="uuid-dbt-9999"
@@ -375,6 +379,26 @@ sh "$REPO/install.sh" --profile bare >/dev/null 2>&1
 has_file "bare: overlay yazi.toml (bundled)"  "$WORK/overlay-bare/yazi.toml"
 no_file  "bare: NO user keymap overlay"        "$WORK/overlay-bare/keymap.toml"
 no_file  "bare: hq-preview omitted (structural)" "$DBT_WS_INSTALL_BIN/hq-preview"
+
+echo "T27: dbt ws with a missing edit_pane degrades gracefully (only .sql/dir need it)"
+# non-model file -> open-helix.sh (does not need edit_pane)
+setup                                            # ws_type=dbt seeded
+rm -f "$DBT_WS_STATE/workspace_test/edit_pane"   # a dbt ws whose edit_pane is unresolved
+printf 'notes\n' > "$WORK/notes.md"
+out="$("$REPO/bin/cwd-route" "$WORK/notes.md" 2>&1)"
+log_has "no edit_pane: notes.md still -> open-helix.sh"  "open-helix.sh .*notes.md"
+out_has "no edit_pane: stdout opened via open-helix.sh"  "open-helix.sh" "$out"
+# .csv -> csvlens in the tools pane (needs tools_pane, NOT edit_pane)
+setup
+rm -f "$DBT_WS_STATE/workspace_test/edit_pane"
+out="$("$REPO/bin/cwd-route" "$DWS_FIXTURES/seeds/orders.csv" 2>&1)"
+log_has "no edit_pane: .csv still -> csvlens (tools pane)" "csvlens .*orders.csv"
+# .sql DOES need edit_pane -> a clear error, not a crash
+setup
+rm -f "$DBT_WS_STATE/workspace_test/edit_pane"
+out="$("$REPO/bin/cwd-route" "$DWS_FIXTURES/models/marts/dim_customers.sql" 2>&1)"; rc=$?
+out_has "no edit_pane: .sql names the missing edit_pane" "no edit_pane state" "$out"
+if [ "$rc" -ne 0 ]; then ok "no edit_pane: .sql exits non-zero (graceful)"; else bad "no edit_pane: .sql should error"; fi
 
 # ---------------------------------------------------------------------------
 echo
