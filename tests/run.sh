@@ -212,6 +212,16 @@ export DBT_PROFILES_DIR="$RODBT"
 out="$("$REPO/bin/cwd" doctor)"
 out_has "doctor: derive resolves under read-only profiles dir" "warehouse=duckdb" "$out"
 
+echo "T13b: warehouse derive — :memory: + md: URIs pass through (NOT path-resolved)"
+# A leading space discriminates the field value from the buggy '<project>/:memory:'
+# (whose ':memory:' is preceded by '/', not a space).
+derive_setup "$DWS_FIXTURES/dbt/duckdb_memory"
+out="$("$REPO/bin/cwd" doctor)"
+out_has "doctor: warehouse=duckdb (memory target)"   "warehouse=duckdb" "$out"
+out_has "doctor: :memory: passed through unmodified" " :memory:" "$out"
+out="$(DBT_TARGET=md "$REPO/bin/cwd" doctor)"
+out_has "doctor: md: URI passed through unmodified"  " md:test_db" "$out"
+
 # UUID key used by the migration tests (a UUID has no :/space, so key == value)
 MIG_UUID="11111111-aaaa-2222-bbbb-333333333333"
 # mig_setup — a live UUID workspace + a stray Phase-0 ref-keyed dir to migrate
