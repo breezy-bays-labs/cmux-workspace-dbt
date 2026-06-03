@@ -209,7 +209,10 @@ cwd_register() {
   _ws="$(ws_ref)"
   [ -n "$_ws" ] || { echo "cwd register: no workspace (set CMUX_WORKSPACE_ID)" >&2; return 1; }
   _tree="$(cmux tree --workspace "$_ws" 2>/dev/null)"
-  _edit="$(printf '%s\n' "$_tree" | _pane_for_title '^hx')"          # the helix editor pane
+  # Match the editor pane by its launch command `hx-wrap` (real cmux titles a fresh
+  # layout surface "<cwd>> hx-wrap") OR the post-open "hx: <model>" form (set later
+  # by cwd-route's rename-tab). NOT a leading "hx" — that never occurs at register time.
+  _edit="$(printf '%s\n' "$_tree" | _pane_for_title 'hx-wrap|^hx:')"  # the helix editor pane
   _tools="$(printf '%s\n' "$_tree" | _last_pane_not "$_edit")"       # the dbt-shell / tools pane
   state_set ws_type dbt
   [ -n "$_edit" ]  && state_set edit_pane  "$_edit"
