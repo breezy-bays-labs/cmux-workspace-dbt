@@ -1,0 +1,3 @@
+cmux fidelity snapshot — cmux 0.64.10 (90) [fafa50702]
+captured by fidelity/cmux-snapshot.sh (static surface only)
+subcommands probed: new-workspace tree new-surface list-pane-surfaces send send-key read-screen rename-tab move-surface focus-pane close-workspace
