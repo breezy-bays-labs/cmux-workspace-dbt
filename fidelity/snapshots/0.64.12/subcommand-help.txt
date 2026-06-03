@@ -1,0 +1,222 @@
+
+===== cmux new-workspace --help =====
+cmux new-workspace
+
+Usage: cmux new-workspace [--name <title>] [--description <text>] [--cwd <path>] [--command <text>] [--layout <json>] [--window <id|ref|index>] [--focus <true|false>]
+
+Create a new workspace in the caller's window.
+
+Flags:
+  --name <title>       Set a custom name for the new workspace
+  --description <text> Set a custom description for the new workspace
+  --cwd <path>         Set the working directory for the new workspace
+  --command <text>     Send text+Enter to the new workspace after creation
+  --layout <json>      Create workspace with a predefined split layout (inline JSON).
+                       Uses the same schema as cmux.json layout definitions.
+                       When provided, --command is ignored (layout surfaces define their own commands).
+  --window <id|ref|index>
+                       Target window (default: caller's window from $CMUX_WORKSPACE_ID/$CMUX_SURFACE_ID)
+  --focus <true|false> Focus the new workspace (default: false)
+
+Example:
+  cmux new-workspace
+  cmux new-workspace --name "Build Server"
+  cmux new-workspace --name "Launch" --description "Ship checklist"
+  cmux new-workspace --cwd ~/projects/myapp
+  cmux new-workspace --cwd . --command "npm test"
+  cmux new-workspace --name "Dev" --layout '{"direction":"horizontal","split":0.5,"children":[{"pane":{"surfaces":[{"type":"terminal","command":"vim"}]}},{"pane":{"surfaces":[{"type":"terminal","command":"npm run start"}]}}]}'
+
+===== cmux tree --help =====
+cmux tree
+
+Usage: cmux tree [flags]
+
+Print the hierarchy of windows, workspaces, panes, and surfaces.
+
+Flags:
+  --all                         Include all windows (default: current window only)
+  --workspace <id|ref|index>   Show only one workspace
+  --window <id|ref|index>      Show one window
+  --json                        Structured JSON output
+
+Output:
+  Text mode prints a box-drawing tree with markers:
+  - ◀ active (true focused window/workspace/pane/surface path)
+  - ◀ here (caller surface where `cmux tree` was invoked)
+  - workspace [selected]
+  - pane [focused]
+  - surface [selected]
+  Browser surfaces also include their current URL.
+
+Example:
+  cmux tree
+  cmux tree --all
+  cmux tree --window window:2
+  cmux tree --workspace workspace:2
+  cmux --json tree --all
+
+===== cmux new-surface --help =====
+cmux new-surface
+
+Usage: cmux new-surface [flags]
+
+Create a new surface (tab) in a pane.
+
+Flags:
+  --type <terminal|browser>   Surface type (default: terminal)
+  --pane <id|ref|index>       Target pane
+  --workspace <id|ref|index>  Target workspace (default: $CMUX_WORKSPACE_ID)
+  --window <id|ref|index>     Window context for workspace/pane refs and indexes
+  --url <url>                 URL for browser surfaces
+  --focus <true|false>        Focus the new surface (default: false)
+
+Example:
+  cmux new-surface
+  cmux new-surface --type browser --pane pane:1 --url https://example.com
+
+===== cmux list-pane-surfaces --help =====
+cmux list-pane-surfaces
+
+Usage: cmux list-pane-surfaces [--workspace <id|ref|index>] [--pane <id|ref|index>] [--window <id|ref|index>]
+
+List surfaces in a pane.
+
+Flags:
+  --workspace <id|ref|index>   Workspace context (default: $CMUX_WORKSPACE_ID)
+  --pane <id|ref|index>        Restrict to a specific pane (default: focused pane)
+  --window <id|ref|index>      Window context for workspace/pane refs and indexes
+
+Example:
+  cmux list-pane-surfaces
+  cmux list-pane-surfaces --workspace workspace:2 --pane pane:1
+
+===== cmux send --help =====
+cmux send
+
+Usage: cmux send [flags] [--] <text>
+
+Send text to a terminal surface. Escape sequences: \n and \r send Enter, \t sends Tab.
+
+Flags:
+  --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
+  --surface <id|ref|index>     Target surface (default: $CMUX_SURFACE_ID)
+  --window <id|ref|index>      Window context for workspace/surface refs and indexes
+
+Example:
+  cmux send "echo hello"
+  cmux send --surface surface:2 "ls -la\n"
+
+===== cmux send-key --help =====
+cmux send-key
+
+Usage: cmux send-key [flags] [--] <key>
+
+Send a key event to a terminal surface.
+
+Flags:
+  --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
+  --surface <id|ref|index>     Target surface (default: $CMUX_SURFACE_ID)
+  --window <id|ref|index>      Window context for workspace/surface refs and indexes
+
+Example:
+  cmux send-key enter
+  cmux send-key --surface surface:2 ctrl+c
+
+===== cmux read-screen --help =====
+cmux read-screen
+
+Usage: cmux read-screen [flags]
+
+Read terminal text from a surface as plain text.
+
+Flags:
+  --workspace <id|ref|index>   Target workspace (default: $CMUX_WORKSPACE_ID)
+  --surface <id|ref|index>     Target surface (default: $CMUX_SURFACE_ID)
+  --window <id|ref|index>      Window context for workspace/surface refs and indexes
+  --scrollback           Include scrollback (not just visible viewport)
+  --lines <n>            Limit to the last n lines (implies --scrollback)
+
+Example:
+  cmux read-screen
+  cmux read-screen --surface surface:2 --scrollback --lines 200
+
+===== cmux rename-tab --help =====
+cmux rename-tab
+
+Usage: cmux rename-tab [--workspace <id|ref|index>] [--tab <id|ref|index>] [--surface <id|ref|index>] [--window <id|ref|index>] [--] <title>
+
+Compatibility alias for tab-action rename.
+
+Resolution order for target tab:
+1) --tab
+2) --surface
+3) $CMUX_TAB_ID / $CMUX_SURFACE_ID
+4) currently focused tab (optionally within --workspace)
+
+Flags:
+  --workspace <id|ref|index>   Workspace context (default: current/$CMUX_WORKSPACE_ID)
+  --tab <id|ref|index>         Tab target (supports tab:<n> or surface:<n>)
+  --surface <id|ref|index>     Alias for --tab
+  --window <id|ref|index>      Window context for workspace/tab refs and indexes
+  --title <text>         Explicit title (or use trailing positional title)
+
+Examples:
+  cmux rename-tab "build logs"
+  cmux rename-tab --tab tab:3 "staging server"
+  cmux rename-tab --workspace workspace:2 --surface surface:5 --title "agent run"
+
+===== cmux move-surface --help =====
+cmux move-surface
+
+Usage: cmux move-surface [--surface <id|ref|index> | <id|ref|index>] [flags]
+
+Move a surface to a different pane, workspace, or window.
+
+Flags:
+  --surface <id|ref|index>   Surface to move (required unless passed positionally)
+  --pane <id|ref|index>      Target pane
+  --workspace <id|ref|index> Target workspace
+  --window <id|ref|index>    Target window
+  --before <id|ref|index>    Place before this surface
+  --before-surface <id|ref|index>
+                           Alias for --before
+  --after <id|ref|index>     Place after this surface
+  --after-surface <id|ref|index>
+                           Alias for --after
+  --index <n>                Place at this index
+  --focus <true|false>       Focus the surface after moving
+
+Example:
+  cmux move-surface --surface surface:1 --workspace workspace:2
+  cmux move-surface surface:1 --pane pane:2 --index 0
+
+===== cmux focus-pane --help =====
+cmux focus-pane
+
+Usage: cmux focus-pane [--pane <id|ref|index> | <id|ref|index>] [flags]
+
+Focus the specified pane.
+
+Flags:
+  --pane <id|ref|index>       Pane to focus (required unless passed positionally)
+  --workspace <id|ref|index>  Workspace context (default: $CMUX_WORKSPACE_ID)
+  --window <id|ref|index>     Window context for workspace/pane refs and indexes
+
+Example:
+  cmux focus-pane --pane pane:2
+  cmux focus-pane pane:1
+  cmux focus-pane --pane pane:1 --workspace workspace:2
+
+===== cmux close-workspace --help =====
+cmux close-workspace
+
+Usage: cmux close-workspace --workspace <id|ref|index> [--window <id|ref|index>]
+
+Close the specified workspace.
+
+Flags:
+  --workspace <id|ref|index>   Workspace to close (required)
+  --window <id|ref|index>      Window context for workspace refs and indexes
+
+Example:
+  cmux close-workspace --workspace workspace:2
