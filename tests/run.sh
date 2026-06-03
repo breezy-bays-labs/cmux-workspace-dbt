@@ -410,6 +410,19 @@ out="$("$REPO/bin/cwd-route" "$DWS_FIXTURES/models/marts/dim_customers.sql" 2>&1
 out_has "no edit_pane: .sql names the missing edit_pane" "no edit_pane state" "$out"
 if [ "$rc" -ne 0 ]; then ok "no edit_pane: .sql exits non-zero (graceful)"; else bad "no edit_pane: .sql should error"; fi
 
+echo "T28: dbt_dir auto-discovery — walk up from PWD to the nearest dbt_project.yml"
+# no per-workspace state default + no env default -> discover the project by walking up.
+setup
+rm -f "$DBT_WS_STATE/workspace_test/dbt_dir"
+unset DBT_WS_DBT_DIR_DEFAULT 2>/dev/null || true
+mkdir -p "$WORK/proj/models/staging"
+printf "name: 'x'\nprofile: 'x'\n" > "$WORK/proj/dbt_project.yml"
+out="$(cd "$WORK/proj/models/staging" && "$REPO/bin/cwd" doctor 2>/dev/null)"
+out_has "discovers the project root from a nested dir" "$WORK/proj   (axis 2" "$out"
+# no dbt_project.yml at or above PWD -> fall back to PWD
+out="$(cd "$WORK" && "$REPO/bin/cwd" doctor 2>/dev/null)"
+out_has "no project above -> falls back to PWD" "$WORK   (axis 2" "$out"
+
 # ---------------------------------------------------------------------------
 echo
 echo "Layer-1: $PASS passed, $FAIL failed"

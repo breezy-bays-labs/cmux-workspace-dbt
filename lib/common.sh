@@ -64,7 +64,18 @@ state_set() {                                                               # st
 # --- helpers (paths) ---------------------------------------------------------
 # yazi's DDS socket lives under the per-user macOS temp dir, NOT an agent sandbox $TMPDIR.
 darwin_tmp()  { getconf DARWIN_USER_TEMP_DIR 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}"; }
-dbt_dir()     { state_get dbt_dir "${DBT_WS_DBT_DIR_DEFAULT:-$PWD}"; }
+# dbt project dir: per-workspace state, then $DBT_WS_DBT_DIR_DEFAULT (env override),
+# then walk up from $PWD for the nearest dbt_project.yml (what dbt itself does), then $PWD.
+# No personal path is baked into any profile — discovery + env keep the repo personal-data-free.
+_discover_dbt_dir() {
+  _wd="$PWD"
+  while [ -n "$_wd" ] && [ "$_wd" != "/" ]; do
+    [ -f "$_wd/dbt_project.yml" ] && { printf '%s' "$_wd"; return 0; }
+    _wd="$(dirname "$_wd")"
+  done
+  printf '%s' "$PWD"
+}
+dbt_dir()     { state_get dbt_dir "${DBT_WS_DBT_DIR_DEFAULT:-$(_discover_dbt_dir)}"; }
 yazi_id()     { state_get yazi_client_id "${DBT_WS_YAZI_ID_DEFAULT:-1717}"; }
 # Workspace TYPE (per-workspace): `dbt` only when the launcher (`cwd register dbt`)
 # wrote the marker; otherwise `general` — NO heuristic, a general ws is simply one
