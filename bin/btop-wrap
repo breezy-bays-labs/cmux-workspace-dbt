@@ -1,0 +1,15 @@
+#!/bin/sh
+# btop-wrap — launch btop with the workspace's bundled XDG config (catppuccin_mocha
+# theme + opinionated btop.conf). Same isolation pattern as hx-wrap: set
+# XDG_CONFIG_HOME via this POSIX wrapper so btop reads config/btop/ and resolves
+# config/btop/themes/catppuccin_mocha.theme — never ~/.config. btop is the
+# monitoring arm of the explorer pane (paired with yazi). Zero-egress: no update
+# check, no telemetry.
+set -eu
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+export XDG_CONFIG_HOME="$DBT_WS_XDG"
+exec btop "$@"

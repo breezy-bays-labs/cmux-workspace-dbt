@@ -9,4 +9,12 @@ DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
 # shellcheck source=/dev/null
 . "$DBT_WS_HOME/lib/common.sh"
 export XDG_CONFIG_HOME="$DBT_WS_XDG"
+
+# Editor-role self-registration: `--as-editor` (or CIDE_AS_EDITOR=1) registers THIS
+# surface as the cide editor before launching helix, so closing/reopening the editor
+# window reconnects file routing automatically. Plain `hx-wrap` does NOT self-register
+# (so transient/local helix launches never steal the editor role).
+if [ "${1:-}" = "--as-editor" ]; then CIDE_AS_EDITOR=1; shift; fi
+if [ "${CIDE_AS_EDITOR:-}" = "1" ]; then cide-set-editor >/dev/null 2>&1 || true; fi
+
 exec hx "$@"

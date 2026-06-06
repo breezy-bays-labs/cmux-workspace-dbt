@@ -1,0 +1,23 @@
+#!/bin/sh
+# cide-yazi [--sidebar] [path] — launch the yazi explorer with the cide IDE config:
+# git-status column + the cide openers (edit -> cross-pane helix via cide-open, .md ->
+# cide-md-open [helix + live preview], .json -> jless, .csv/.tsv -> csvlens, .log -> lnav,
+# .duckdb/.sqlite -> hq-wrap). Default = cide-wide (3-col + preview, the landscape
+# explorer); --sidebar = cide (2-col narrow). Uses the stable client-id so external tools
+# can drive it (`ya emit-to <id> reveal/cd`) and cide-open's reveal routing works.
+#
+# This is the cide IDE explorer launcher — distinct from `yazi-wrap` (the POSIX cwd tool's
+# launcher, which targets config/yazi/dbt). nushell can't do inline `VAR=val yazi`, so use
+# this wrapper to get the IDE config.
+set -eu
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+
+variant="cide-wide"
+if [ "${1:-}" = "--sidebar" ]; then variant="cide"; shift; fi
+
+export YAZI_CONFIG_HOME="$DBT_WS_XDG/yazi/$variant"
+exec yazi --client-id "$(yazi_id)" "$@"

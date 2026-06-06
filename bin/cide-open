@@ -1,0 +1,73 @@
+#!/bin/sh
+# cide-open <file...> — open file(s) in the cide IDE-instance EDITOR (helix), which may
+# live in a DIFFERENT cmux workspace/window (multi-monitor routing). Helix has no
+# remote-open socket, so when it IS running we inject `:open <abspath>` via `cmux send`;
+# when it has EXITED (the surface fell back to a shell — tab name persists as "hx" but
+# the process is gone) we relaunch `hx-wrap <file>` instead, so we never fire `:open`
+# into a shell. The editor target is recorded in cide state. Falls back to a local helix
+# if no IDE-instance editor is registered.
+set -eu
+
+usage() {
+  cat <<'EOF'
+cide-open <file...> — open file(s) in the cide IDE editor (helix), which may live on a
+different monitor / cmux workspace. Resolves the editor target from cide state. If helix
+is running there, injects `:open <abspath>` (helix has no remote-open API); if helix has
+exited (surface at a shell prompt), relaunches `hx-wrap`. Falls back to a local `hx-wrap`
+when no editor is registered.
+  -h, --help   show this help
+  --           end option parsing (open a file whose name starts with '-')
+EOF
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+  --)        shift ;;
+  -?*)       printf 'cide-open: unknown option "%s" (use -- to open a file named like an option)\n' "$1" >&2; exit 64 ;;
+esac
+[ "$#" -gt 0 ] || { usage; exit 64; }
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+# Resolve the editor target with a LIVENESS check (the editor window may be closed).
+if cide_editor_load && cide_editor_alive; then
+  WS="$EDITOR_WS"; PANE="$EDITOR_PANE"; SF="$EDITOR_SF"
+else
+  cide_editor_load && cide_editor_clear          # had a stale target -> drop it
+  [ -t 1 ] && exec hx-wrap "$@"                   # interactive local use -> open here
+  # self-heal: regenerate the editor (fresh portrait window) and open the file(s) there.
+  cide_regen_editor "$@" && exit 0
+  cide_editor_warn                               # regen failed -> degrade loudly
+  exit 0
+fi
+# (_abs is provided by lib/cide-editor.sh)
+
+# Is the editor surface at a shell prompt (helix exited)? read-screen sees a shell prompt
+# but NOT helix's alt-screen, so: prompt visible => shell => (re)launch helix.
+# NOTE: $PROMPT_GLYPH from common.sh is NOT reliable here (it can differ from the live
+# shell's actual prompt char), so match common prompt markers directly: nushell/starship
+# ❯, ➜, or a line ending in $ / % / #.
+screen="$(cmux read-screen --surface "$SF" --workspace "$WS" 2>/dev/null || true)"
+
+if printf '%s\n' "$screen" | grep -qE '(❯|➜|[$%#][[:space:]]*$)'; then
+  # helix not running -> launch it on all files at once
+  cmd="hx-wrap"
+  for f in "$@"; do cmd="$cmd \"$(_abs "$f")\""; done
+  cmux send     --surface "$SF" --workspace "$WS" "$cmd"  >/dev/null 2>&1 || true
+  cmux send-key --surface "$SF" --workspace "$WS" Return  >/dev/null 2>&1 || true
+else
+  # helix running -> inject :open per file
+  for f in "$@"; do
+    abs="$(_abs "$f")"
+    cmux send-key --surface "$SF" --workspace "$WS" Escape       >/dev/null 2>&1 || true
+    cmux send     --surface "$SF" --workspace "$WS" ":open $abs" >/dev/null 2>&1 || true
+    cmux send-key --surface "$SF" --workspace "$WS" Return       >/dev/null 2>&1 || true
+  done
+fi
+cmux focus-pane --pane "$PANE" --workspace "$WS" >/dev/null 2>&1 || true

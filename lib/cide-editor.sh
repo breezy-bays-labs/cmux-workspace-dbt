@@ -1,0 +1,150 @@
+# cide-editor.sh — shared IDE-instance state for cide: editor-target resolution,
+# a small registry, and self-healing regeneration of role-workspaces.
+# Sourced by bin/cide-open, bin/cide-md-open, bin/cide-set-editor, bin/cide-regen.
+# Requires DBT_WS_HOME set before sourcing (callers do this).
+#
+# Design (see .claude/architecture-direction.md → IDE INSTANCE IDENTITY): an IDE
+# instance is a NAMED, coupled set of cmux workspaces (one per role). Coupling is
+# functional — a registry (source of truth) + a workspace `description` tag
+# (cide:instance=<name>;role=<role>, rebuild fallback). Closing a role-window no
+# longer breaks routing: the next trigger self-heals (regenerate + recouple), and
+# `cide-regen` lets the human do it on demand. THIS SLICE wires ONE recipe: the
+# editor/portrait role (a trivial `hx-wrap` launch). tools/landscape regen needs
+# layout-as-data (#21) and is intentionally NOT wired yet.
+
+CIDE_STATE="${CIDE_STATE:-$HOME/.local/state/cide}"
+CIDE_EDITOR_TARGET="$CIDE_STATE/editor_target"   # "<ws-ref> <pane-ref> <surface-ref>"
+CIDE_REGISTRY="$CIDE_STATE/registry"             # lines: instance|role|ws|pane|sf|win
+
+# absolute path for a file arg (shared)
+_abs() { _d=$(dirname -- "$1"); _b=$(basename -- "$1"); (cd -- "$_d" 2>/dev/null && printf '%s/%s' "$(pwd)" "$_b") || printf '%s' "$1"; }
+
+# --- cide.toml reader (generic [section] key -> value; minimal, matches common.sh style)
+cide_toml_get() {  # <section> <key>
+  _f="$DBT_WS_HOME/cide.toml"; [ -f "$_f" ] || return 0
+  awk -v s="$1" -v k="$2" '
+    /^[[:space:]]*\[/ { ins = ($0 ~ "^[[:space:]]*\\["s"\\][[:space:]]*$"); next }
+    ins && $0 ~ "^[[:space:]]*"k"[[:space:]]*=" {
+      sub("^[[:space:]]*"k"[[:space:]]*=[[:space:]]*",""); sub(/[[:space:]]*#.*$/,""); print; exit
+    }
+  ' "$_f" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'\$/\\1/"
+}
+
+cide_ide_name() { _n="$(cide_toml_get ide name)"; [ -n "$_n" ] && printf '%s' "$_n" || basename "$DBT_WS_HOME"; }
+
+# --- registry (sh-simple; pipe-delimited; one row per instance+role) ----------
+cide_registry_log() {  # instance role ws pane sf win
+  mkdir -p "$CIDE_STATE"
+  if [ -f "$CIDE_REGISTRY" ]; then
+    grep -v "^$1|$2|" "$CIDE_REGISTRY" > "$CIDE_REGISTRY.tmp" 2>/dev/null || true
+    mv "$CIDE_REGISTRY.tmp" "$CIDE_REGISTRY" 2>/dev/null || true
+  fi
+  printf '%s|%s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" "$6" >> "$CIDE_REGISTRY"
+}
+
+cide_registry_get() {  # instance role -> "ws pane sf win" (nonzero if absent)
+  [ -f "$CIDE_REGISTRY" ] || return 1
+  _row="$(awk -F'|' -v i="$1" -v r="$2" '$1==i && $2==r {print $3, $4, $5, $6; exit}' "$CIDE_REGISTRY")"
+  [ -n "$_row" ] && printf '%s' "$_row"
+}
+
+cide_registry_role_of_ws() {  # instance ws -> role (nonzero if not found)
+  [ -f "$CIDE_REGISTRY" ] || return 1
+  _r="$(awk -F'|' -v i="$1" -v w="$2" '$1==i && $3==w {print $2; exit}' "$CIDE_REGISTRY")"
+  [ -n "$_r" ] && printf '%s' "$_r"
+}
+
+# window ref of a workspace (refs are derived live — stored win can go stale).
+cide_ws_window() { [ -n "${1:-}" ] || return 1; cmux tree --workspace "$1" 2>/dev/null | grep -oE 'window:[0-9]+' | head -1; }
+
+# --- editor target load / liveness -------------------------------------------
+cide_editor_load() {
+  [ -f "$CIDE_EDITOR_TARGET" ] || return 1
+  read -r EDITOR_WS EDITOR_PANE EDITOR_SF < "$CIDE_EDITOR_TARGET" || return 1
+  [ -n "${EDITOR_WS:-}" ] && [ -n "${EDITOR_SF:-}" ]
+}
+
+# Live iff the workspace exists, still contains the surface, AND still carries our
+# editor tag (the tag check defends against cmux reusing a ref after a close).
+cide_editor_alive() {
+  [ -n "${EDITOR_WS:-}" ] && [ -n "${EDITOR_SF:-}" ] || return 1
+  _t="$(cmux --json tree --workspace "$EDITOR_WS" 2>/dev/null)" || return 1
+  printf '%s' "$_t" | grep -qF "$EDITOR_SF" || return 1
+  printf '%s' "$_t" | grep -q 'role=editor' || return 1
+}
+
+cide_editor_window() { [ -n "${EDITOR_WS:-}" ] || return 1; cmux tree --workspace "$EDITOR_WS" 2>/dev/null | grep -oE 'window:[0-9]+' | head -1; }
+cide_editor_clear()  { rm -f "$CIDE_EDITOR_TARGET" 2>/dev/null || true; }
+
+cide_editor_warn() {
+  _m="cide: no live editor — the editor window may be closed. It self-heals on the next open, or run 'cide-regen editor'."
+  cmux notify --title "cide editor not found" --body "$_m" >/dev/null 2>&1 || true
+  printf '%s\n' "$_m" >&2
+}
+
+# --- window orientation (portrait vs landscape) via the container frame --------
+# cmux exposes a per-window container_frame {width,height} in `list-panes --json`.
+# width < height => portrait monitor; otherwise landscape. This is what lets
+# on_missing_window=reuse place the editor on the RIGHT monitor.
+cide_window_orientation() {  # <window-ref> -> portrait|landscape (nonzero on failure)
+  _j="$(cmux --json list-panes --window "$1" 2>/dev/null)" || return 1
+  _h="$(printf '%s' "$_j" | grep -oE '"height"[[:space:]]*:[[:space:]]*[0-9.]+' | head -1 | grep -oE '[0-9.]+' | head -1)"
+  _w="$(printf '%s' "$_j" | grep -oE '"width"[[:space:]]*:[[:space:]]*[0-9.]+'  | head -1 | grep -oE '[0-9.]+' | head -1)"
+  [ -n "$_w" ] && [ -n "$_h" ] || return 1
+  awk -v w="$_w" -v h="$_h" 'BEGIN{ print (w+0 < h+0) ? "portrait" : "landscape" }'
+}
+
+# First existing window matching an orientation (lowest window:N first), else nonzero.
+cide_find_window() {  # <orientation>
+  for _w in $(cmux tree --all 2>/dev/null | grep -oE 'window:[0-9]+' | sort -t: -k2 -n -u); do
+    [ "$(cide_window_orientation "$_w" 2>/dev/null)" = "$1" ] && { printf '%s' "$_w"; return 0; }
+  done
+  return 1
+}
+
+# "ws pane sf" of a window's SELECTED workspace (resolves what we just created with --focus).
+cide_window_selected_refs() {  # <window-ref>
+  _j="$(cmux --json list-panes --window "$1" 2>/dev/null)" || return 1
+  _ws="$(printf '%s' "$_j" | grep -oE 'workspace:[0-9]+' | head -1)"
+  _pn="$(printf '%s' "$_j" | grep -oE 'pane:[0-9]+' | head -1)"
+  _sf="$(printf '%s' "$_j" | grep -oE 'surface:[0-9]+' | head -1)"
+  [ -n "$_ws" ] && [ -n "$_sf" ] && printf '%s %s %s' "$_ws" "${_pn:-pane:0}" "$_sf"
+}
+
+# --- regeneration: ONE wired recipe (editor/portrait role) -------------------
+# Launches the portrait editor (helix) with the given file(s), tags + registers it, and
+# sets EDITOR_WS/PANE/SF + editor_target. Placement per on_missing_window:
+#   reuse -> open the editor workspace IN an existing portrait window (right monitor; no drag)
+#   new   -> create a fresh window (lands on the main monitor; drag once)
+# Returns 1 on failure. (tools/landscape recipe still deferred to #21.)
+cide_regen_editor() {  # [file...]
+  _name="$(cide_ide_name)"
+  _omw="$(cide_toml_get ide on_missing_window)"; _omw="${_omw:-reuse}"
+  _tag="cide:instance=$_name;role=editor"
+  _cmd="hx-wrap"
+  for _f in "$@"; do _cmd="$_cmd \"$(_abs "$_f")\""; done
+
+  _win=""; _defws=""
+  # editor role -> portrait orientation. Try to reuse an existing portrait window.
+  [ "$_omw" = "reuse" ] && _win="$(cide_find_window portrait 2>/dev/null || true)"
+  if [ -z "$_win" ]; then
+    _out="$(cmux new-window 2>&1)" || return 1          # fresh window (new mode, or reuse found none)
+    _win="${_out#OK }"; _win="$(printf '%s' "$_win" | tr -d '[:space:]')"
+    [ -n "$_win" ] || return 1
+    _defws="$(cmux tree --window "$_win" 2>/dev/null | grep -oE 'workspace:[0-9]+' | head -1)"  # default "Terminal" ws to drop
+  fi
+
+  # create the editor workspace (cmux --command handles the post-create send timing).
+  cmux new-workspace --window "$_win" --name "$_name" --description "$_tag" --command "$_cmd" --focus true >/dev/null 2>&1 || return 1
+  [ -n "$_defws" ] && cmux close-workspace --workspace "$_defws" --window "$_win" >/dev/null 2>&1 || true
+
+  # resolve the new editor = the window's now-selected workspace (works for reuse AND new).
+  _refs="$(cide_window_selected_refs "$_win")" || return 1
+  EDITOR_WS="${_refs%% *}"; _rest="${_refs#* }"; EDITOR_PANE="${_rest%% *}"; EDITOR_SF="${_rest##* }"
+  [ -n "$EDITOR_WS" ] && [ -n "$EDITOR_SF" ] || return 1
+
+  mkdir -p "$CIDE_STATE"
+  printf '%s %s %s\n' "$EDITOR_WS" "${EDITOR_PANE:-pane:0}" "$EDITOR_SF" > "$CIDE_EDITOR_TARGET"
+  cide_registry_log "$_name" editor "$EDITOR_WS" "${EDITOR_PANE:-}" "$EDITOR_SF" "$_win"
+  return 0
+}

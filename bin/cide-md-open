@@ -1,0 +1,37 @@
+#!/bin/sh
+# cide-md-open <file.md...> — open markdown in BOTH the cide editor (helix, in the
+# artifact region — possibly another monitor) AND a live cmux markdown preview split
+# right next to it. Edit on one side, rendered preview on the other; the preview
+# live-reloads when helix saves. Used by the yazi `markdown` opener.
+#
+# The preview splits DOWN from the editor's surface (the artifact region is the
+# vertical/portrait monitor, so a downward split keeps both full-width). The editor
+# target is the same cide state cide-open uses; if it's unknown we split from the
+# caller (yazi) surface instead.
+set -eu
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+# Ensure a LIVE editor (self-heal if its window was closed), then open the file in it.
+if cide_editor_load && cide_editor_alive; then
+  cide-open "$@"                                  # existing editor -> inject :open
+else
+  cide_editor_load && cide_editor_clear
+  cide_regen_editor "$@" || { cide_editor_warn; exit 0; }   # regen: new editor opens the file + sets EDITOR_*
+fi
+WIN="$(cide_editor_window || true)"
+[ -n "${EDITOR_WS:-}" ] && [ -n "${EDITOR_SF:-}" ] || { cide_editor_warn; exit 0; }
+
+# 2) live markdown preview split from the editor surface, in the editor's window.
+# --workspace alone does NOT move the split across windows — pass --window too (the
+# editor may be on another monitor than the caller/yazi).
+for f in "$@"; do
+  d=$(dirname -- "$f"); b=$(basename -- "$f")
+  abs=$(cd -- "$d" 2>/dev/null && printf '%s/%s' "$(pwd)" "$b") || abs="$f"
+  cmux markdown open "$abs" ${WIN:+--window "$WIN"} --workspace "$EDITOR_WS" --surface "$EDITOR_SF" --direction down --focus false >/dev/null 2>&1 || true
+done

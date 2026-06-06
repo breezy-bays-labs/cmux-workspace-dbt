@@ -1,0 +1,4 @@
+#!/bin/sh
+# stgrev — short alias for stagereview (cide convenience). POSIX wrapper so it works
+# from any shell (nu/zsh/sh). `stgrev prep` / `stgrev show <chapters.json>` / `stgrev --help`.
+exec stagereview "$@"

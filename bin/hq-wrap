@@ -1,0 +1,64 @@
+#!/bin/sh
+# hq-wrap [conn] — launch harlequin (SQL IDE) for the cide explorer pane, with config
+# isolation and zero-egress duckdb defaults.
+#
+#  * With a path arg (yazi `database` opener): open THAT file; adapter by extension.
+#  * No arg (e.g. launched as a tab): resolve the default target —
+#      1. cide.toml [database].connection (explicit)
+#      2. the derived dbt warehouse (WAREHOUSE=duckdb -> duckdb_path; read-only)
+#      3. in-memory duckdb
+#
+# Egress: the duckdb adapter runs config/duckdb/cide-init.sql (via -i), which sets
+# autoinstall_known_extensions=false — a missing extension fails loudly instead of
+# being fetched from extensions.duckdb.org. Built-ins (icu/json/parquet) still work;
+# local read_parquet/read_csv still work (enable_external_access left on). A remote
+# `md:` connection is an explicit, documented opt-in (set in cide.toml on purpose).
+set -eu
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+export XDG_CONFIG_HOME="$DBT_WS_XDG"
+
+DUCKDB_INIT="$DBT_WS_XDG/duckdb/cide-init.sql"
+
+# Read a key from the [database] table of cide.toml (empty if unset). Hand-rolled,
+# matching common.sh's minimal-parser philosophy; promote to common.sh if other
+# consumers need it. Single flat table, string/bool scalars.
+_cide_db_get() {  # <key>
+  _f="$DBT_WS_HOME/cide.toml"
+  [ -f "$_f" ] || return 0
+  awk -v k="$1" '
+    /^[[:space:]]*\[/ { indb = ($0 ~ /^[[:space:]]*\[database\][[:space:]]*$/); next }
+    indb && $0 ~ "^[[:space:]]*"k"[[:space:]]*=" {
+      sub("^[[:space:]]*"k"[[:space:]]*=[[:space:]]*",""); sub(/[[:space:]]*#.*$/,""); print; exit
+    }
+  ' "$_f" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'\$/\\1/"
+}
+
+# --- file-arg path (yazi opener): open the clicked database file, adapter by extension.
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    *.sqlite|*.sqlite3|*.db) exec harlequin -a sqlite "$@" ;;
+    *)                       exec harlequin -a duckdb -i "$DUCKDB_INIT" "$@" ;;
+  esac
+fi
+
+# --- no-arg path: resolve the default target.
+CONN="$(_cide_db_get connection)"
+ADAPTER="$(_cide_db_get adapter)"
+RO=""
+[ "$(_cide_db_get read_only)" = "true" ] && RO="-r"
+if [ -z "$CONN" ] && [ "${WAREHOUSE:-none}" = "duckdb" ]; then
+  CONN="$(duckdb_path)"            # derived dbt warehouse
+  ADAPTER="${ADAPTER:-duckdb}"
+  RO="-r"                          # read-only: don't fight dbt's writer lock
+fi
+ADAPTER="${ADAPTER:-duckdb}"
+
+if [ "$ADAPTER" = "sqlite" ]; then
+  exec harlequin -a sqlite ${CONN:+"$CONN"}
+fi
+# duckdb (incl. in-memory when CONN is empty): apply the zero-egress init.
+exec harlequin -a duckdb -i "$DUCKDB_INIT" $RO ${CONN:+"$CONN"}
