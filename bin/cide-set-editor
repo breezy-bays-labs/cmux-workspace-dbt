@@ -1,0 +1,6 @@
+#!/bin/sh
+# cide-set-editor — register the current cmux surface as the cide editor. Thin alias for
+# `cide-set-role editor` (kept as a name because `hx-wrap --as-editor` calls it).
+set -eu
+case "${1:-}" in -h|--help) printf 'cide-set-editor — register the current cmux surface as the cide editor (= cide-set-role editor).\n'; exit 0 ;; esac
+exec cide-set-role editor

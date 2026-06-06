@@ -1,0 +1,37 @@
+#!/bin/sh
+# cide-regen [role] — regenerate a missing IDE role-workspace with its proper setup,
+# then recouple it (registry + description tag). THIS SLICE wires ONE recipe: `editor`
+# (portrait helix). Other roles (tools/landscape) need layout-as-data (#21) and report
+# "no recipe yet" rather than pretending.
+set -eu
+
+usage() { printf 'cide-regen [role]   (role: editor [default])\n  Regenerate a missing IDE role-workspace.\n  -h, --help   show this help\n'; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+role="${1:-editor}"
+case "$role" in
+  editor)
+    if cide_editor_load && cide_editor_alive; then
+      echo "cide-regen: editor already live ($EDITOR_WS $EDITOR_SF) — nothing to do."
+      exit 0
+    fi
+    cide_editor_load && cide_editor_clear
+    if cide_regen_editor; then
+      echo "cide-regen: editor regenerated (instance=$(cide_ide_name) $EDITOR_WS $EDITOR_SF)."
+    else
+      echo "cide-regen: editor regeneration failed" >&2; exit 1
+    fi
+    ;;
+  tools|landscape)
+    echo "cide-regen: no layout recipe for role '$role' yet (deferred to #21 layout-as-data)." >&2; exit 2 ;;
+  *)
+    echo "cide-regen: unknown role '$role' (known: editor)" >&2; exit 64 ;;
+esac

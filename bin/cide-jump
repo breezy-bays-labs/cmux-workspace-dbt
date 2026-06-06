@@ -1,0 +1,65 @@
+#!/bin/sh
+# cide-jump [role] [--dry] — focus the IDE's OTHER role-workspace across windows/monitors.
+# With no role it TOGGLES (editor <-> tools for the landscape-portrait layout). Resolves the
+# target from the cide registry and derives its window live (so a reused/moved window still
+# works). If the target is the editor and it's gone, regenerates it first. --dry prints the
+# target without focusing. Bind this to a cmux.json keyboard shortcut for one-key monitor
+# switching (cmux can't otherwise select the right workspace on the other monitor in one go).
+set -eu
+
+usage() { printf 'cide-jump [role] [--dry]\n  Focus the IDE other role-workspace (default: toggle editor<->tools).\n  -h, --help   show this help\n'; }
+dry=""; role=""
+for a in "$@"; do
+  case "$a" in
+    -h|--help) usage; exit 0 ;;
+    --dry)     dry=1 ;;
+    -*)        printf 'cide-jump: unknown option %s\n' "$a" >&2; exit 64 ;;
+    *)         role="$a" ;;
+  esac
+done
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+name="$(cide_ide_name)"
+
+# Currently-focused workspace -> its role (if registered).
+fid="$(cmux identify --json 2>/dev/null || true)"
+fws="$(printf '%s' "$fid" | grep -oE 'workspace:[0-9]+' | head -1)"
+cur="$(cide_registry_role_of_ws "$name" "$fws" 2>/dev/null || true)"
+
+# Target role: explicit arg, else the other of the editor/tools pair.
+if [ -z "$role" ]; then
+  if [ "$cur" = "editor" ]; then role="tools"; else role="editor"; fi
+fi
+
+refs="$(cide_registry_get "$name" "$role" 2>/dev/null || true)"
+tws="$(printf '%s' "$refs" | awk '{print $1}')"
+tpane="$(printf '%s' "$refs" | awk '{print $2}')"
+
+# Resolve / self-heal the target.
+if [ -z "$tws" ] || ! cmux tree --workspace "$tws" >/dev/null 2>&1; then
+  if [ "$role" = "editor" ]; then
+    [ -n "$dry" ] && { echo "cide-jump: editor missing -> would regenerate"; exit 0; }
+    cide_regen_editor || { echo "cide-jump: editor unavailable" >&2; exit 1; }
+    tws="$EDITOR_WS"; tpane="$EDITOR_PANE"
+  else
+    echo "cide-jump: role '$role' not registered/alive — run 'cide-set-role $role' in that workspace." >&2
+    exit 1
+  fi
+fi
+
+twin="$(cide_ws_window "$tws" 2>/dev/null || true)"
+if [ -n "$dry" ]; then
+  echo "cide-jump: from=${cur:-?} -> $role   window=${twin:-?} ws=$tws pane=${tpane:-?}"
+  exit 0
+fi
+[ -n "$twin" ] && cmux focus-window --window "$twin" >/dev/null 2>&1 || true
+cmux select-workspace --workspace "$tws" >/dev/null 2>&1 || true
+[ -n "$tpane" ] && cmux focus-pane --pane "$tpane" --workspace "$tws" >/dev/null 2>&1 || true
+echo "cide-jump -> $role ($tws${tpane:+ $tpane})"

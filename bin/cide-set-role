@@ -1,0 +1,32 @@
+#!/bin/sh
+# cide-set-role <role> — register the CURRENT cmux surface under <role> for this IDE
+# instance: tag the workspace description (cide:instance=<name>;role=<role>), log the cide
+# registry, and (for role=editor) write editor_target. Run from inside the surface you want
+# as that role — e.g. `cide-set-role tools` in the landscape, or via `hx-wrap --as-editor`
+# (which calls `cide-set-role editor`). This is what lets cide-jump find each role.
+set -eu
+
+usage() { printf 'cide-set-role <role>   (e.g. editor, tools)\n  Register the current cmux surface as <role> for the cide IDE instance.\n  -h, --help   show this help\n'; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; "") usage >&2; exit 64 ;; esac
+role="$1"
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+id="$(cmux identify --json 2>/dev/null)" || { echo "cide-set-role: cmux identify failed (not in a cmux terminal?)" >&2; exit 1; }
+ws="$(printf '%s' "$id" | grep -oE 'workspace:[0-9]+' | head -1)"
+pane="$(printf '%s' "$id" | grep -oE 'pane:[0-9]+' | head -1)"
+sf="$(printf '%s' "$id" | grep -oE 'surface:[0-9]+' | head -1)"
+[ -n "$ws" ] && [ -n "$sf" ] || { echo "cide-set-role: could not resolve the current surface" >&2; exit 1; }
+
+name="$(cide_ide_name)"
+mkdir -p "$CIDE_STATE"
+cmux workspace-action --workspace "$ws" --action set-description --description "cide:instance=$name;role=$role" >/dev/null 2>&1 || true
+cide_registry_log "$name" "$role" "$ws" "${pane:-}" "$sf" "$(cide_ws_window "$ws")"
+[ "$role" = editor ] && printf '%s %s %s\n' "$ws" "${pane:-pane:0}" "$sf" > "$CIDE_EDITOR_TARGET"
+echo "cide role registered: instance=$name role=$role $ws ${pane:-?} $sf"
