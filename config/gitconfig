@@ -1,0 +1,18 @@
+# cide base IDE — git config, pointed at via GIT_CONFIG_GLOBAL (never writes ~/.gitconfig).
+# Layer the user's REAL global config first (identity, aliases, signing), then add cide's
+# diff/pager opinions on top. GIT_CONFIG_GLOBAL fully REPLACES ~/.gitconfig, so this include
+# is required to keep user.name/email and existing settings.
+[include]
+	path = ~/.gitconfig
+
+[core]
+	pager = delta
+
+[delta]
+	syntax-theme = Dracula
+	navigate     = true        # n/N jump between diff sections
+	line-numbers = true
+	side-by-side = false       # unified in narrow panes; needs ~120+ cols for side-by-side
+
+[interactive]
+	diffFilter = delta --color-only

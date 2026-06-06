@@ -1,0 +1,69 @@
+# Catppuccin Mocha — btop theme.
+# Hand-written from the published Catppuccin Mocha palette (zero-egress; no upstream
+# fetch). Matches helix `catppuccin_mocha` + yazi `catppuccin-mocha` for a coherent
+# cide theme. Palette ref: base #1e1e2e · text #cdd6f4 · blue #89b4fa · mauve #cba6f7
+# · green #a6e3a1 · teal #94e2d5 · yellow #f9e2af · peach #fab387 · red #f38ba8.
+
+# Backgrounds / foregrounds
+theme[main_bg]="#1e1e2e"
+theme[main_fg]="#cdd6f4"
+theme[title]="#cdd6f4"
+theme[hi_fg]="#89b4fa"
+theme[selected_bg]="#45475a"
+theme[selected_fg]="#89b4fa"
+theme[inactive_fg]="#7f849c"
+theme[graph_text]="#cdd6f4"
+theme[meter_bg]="#45475a"
+theme[proc_misc]="#cdd6f4"
+
+# Box outlines
+theme[cpu_box]="#cba6f7"
+theme[mem_box]="#a6e3a1"
+theme[net_box]="#eba0ac"
+theme[proc_box]="#89b4fa"
+theme[div_line]="#7f849c"
+
+# Temperature gradient (cool -> hot)
+theme[temp_start]="#a6e3a1"
+theme[temp_mid]="#f9e2af"
+theme[temp_end]="#f38ba8"
+
+# CPU gradient
+theme[cpu_start]="#94e2d5"
+theme[cpu_mid]="#89b4fa"
+theme[cpu_end]="#cba6f7"
+
+# Mem/disk free
+theme[free_start]="#cba6f7"
+theme[free_mid]="#89b4fa"
+theme[free_end]="#94e2d5"
+
+# Mem/disk cached
+theme[cached_start]="#89dceb"
+theme[cached_mid]="#74c7ec"
+theme[cached_end]="#89b4fa"
+
+# Mem/disk available
+theme[available_start]="#f9e2af"
+theme[available_mid]="#fab387"
+theme[available_end]="#eba0ac"
+
+# Mem/disk used
+theme[used_start]="#a6e3a1"
+theme[used_mid]="#94e2d5"
+theme[used_end]="#89dceb"
+
+# Download gradient
+theme[download_start]="#a6e3a1"
+theme[download_mid]="#94e2d5"
+theme[download_end]="#89dceb"
+
+# Upload gradient
+theme[upload_start]="#f9e2af"
+theme[upload_mid]="#fab387"
+theme[upload_end]="#eba0ac"
+
+# Process box gradient
+theme[process_start]="#89b4fa"
+theme[process_mid]="#b4befe"
+theme[process_end]="#cba6f7"

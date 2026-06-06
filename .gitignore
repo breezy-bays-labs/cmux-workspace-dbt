@@ -8,3 +8,8 @@ err.tmp
 
 # Session scaffolding (pipeline focus notes etc.); never committed to the public repo
 .claude/
+
+# Yazi plugins/flavors are ya-pkg-managed (versions pinned in each package.toml);
+# reproduce with `ya pkg install` rather than vendoring the third-party code.
+config/yazi/*/plugins/
+config/yazi/*/flavors/

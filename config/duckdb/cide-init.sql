@@ -1,0 +1,18 @@
+-- cide duckdb init — zero-egress posture for harlequin's duckdb adapter (run via `hq-wrap -i`).
+--
+-- Closes the only silent-egress hole in the duckdb path: auto-INSTALLing a missing extension
+-- from extensions.duckdb.org on first use. With autoinstall OFF:
+--   * built-in extensions (icu / json / parquet — statically bundled, verified installed+loaded)
+--     keep working, so timezones / parquet / json reads are fully local;
+--   * a query needing a NOT-installed extension (httpfs, spatial, …) fails LOUDLY
+--     ("Install it first using INSTALL <ext>") instead of phoning home.
+--
+-- Deliberately LEFT ON:
+--   * autoload_known_extensions  — LOAD of an already-installed extension is local / no egress;
+--     disabling it buys zero egress protection and just forces manual LOADs.
+--   * enable_external_access      — turning it off breaks LOCAL read_parquet()/read_csv() by path,
+--     gutting the dbt/duckdb workflow. (Remote/`md:` targets are an explicit opt-in, per policy.)
+--
+-- Opt-in escape hatch (documented, one-time, explicit — same posture as `ya pkg`):
+--   duckdb -c "INSTALL httpfs;"   # then it's local thereafter
+SET autoinstall_known_extensions = false;

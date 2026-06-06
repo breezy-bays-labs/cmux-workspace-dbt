@@ -1,0 +1,107 @@
+# helix 25.07.1 — cide base IDE config (read via hx-wrap → XDG_CONFIG_HOME=config/)
+# VCS surface (diff gutter, ]g/[g hunk-jump, Space-g changed-file picker, version-control
+# statusline) is default-on since helix 22.12 — this file places/styles it + good IDE defaults.
+theme = "catppuccin_mocha"
+
+[editor]
+line-number             = "relative"
+cursorline              = true
+mouse                   = true
+true-color              = true
+color-modes             = true        # tint statusline per mode
+bufferline              = "multiple"  # tab bar only when 2+ buffers open
+idle-timeout            = 50
+scrolloff               = 5
+rulers                  = [88, 120]
+text-width              = 100
+end-of-line-diagnostics = "hint"
+
+[editor.cursor-shape]
+normal = "block"
+insert = "bar"
+select = "underline"
+
+# --- VCS surface: diff gutter is the LAST element (array `layout` form, not the object form) ---
+[editor.gutters]
+layout = ["diagnostics", "spacer", "line-numbers", "spacer", "diff"]
+
+[editor.gutters.line-numbers]
+min-width = 3
+
+[editor.statusline]
+left      = ["mode", "spinner", "version-control", "file-name", "file-modification-indicator"]
+center    = []
+right     = ["diagnostics", "selections", "position", "file-encoding", "file-type"]
+separator = "│"
+
+[editor.statusline.mode]
+normal = "NOR"
+insert = "INS"
+select = "SEL"
+
+[editor.lsp]
+display-messages    = true
+display-inlay-hints = true
+
+# --- Auto-save: TABLE form only (bare `auto-save = true` conflicts) ---
+[editor.auto-save]
+focus-lost          = true
+after-delay.enable  = true
+after-delay.timeout = 3000
+# CAVEAT (helix #11237): per-language `auto-format = true` fires on every save-delay tick →
+# we set auto-format = false for sql in languages.toml.
+
+[editor.inline-diagnostics]
+cursor-line = "error"
+other-lines = "disable"
+
+[editor.file-picker]
+hidden      = false   # show dotfiles (.env, .github)
+git-ignore  = true
+git-global  = true
+git-exclude = true
+
+[editor.indent-guides]
+render    = true
+character = "╎"
+
+[editor.soft-wrap]
+enable             = true
+wrap-at-text-width = false
+wrap-indicator     = "↪ "
+
+[editor.search]
+smart-case  = true
+wrap-around = true
+
+[keys.normal]
+# Buffer navigation (companions to bufferline)
+"A-," = "goto_previous_buffer"
+"A-." = "goto_next_buffer"
+"A-w" = ":buffer-close"
+
+# Save
+"C-s" = ":w"
+
+# Git blame for the cursor line → statusline (requires helix 25.07+). On A-b to avoid
+# clobbering the default `B` (extend-to-prev-WORD) motion.
+"A-b" = ":echo %sh{git blame -L %{cursor_line},+1 %{buffer_name}}"
+
+# Yazi as a full-screen file picker (multiplexer-agnostic chooser-file pattern; cmux has no popup)
+"C-y" = [
+  ':sh rm -f /tmp/hx-yazi-chooser',
+  ':insert-output yazi "%{buffer_name}" --chooser-file=/tmp/hx-yazi-chooser',
+  ':sh printf "\x1b[?1049h\x1b[?2004h" > /dev/tty',
+  ':open %sh{cat /tmp/hx-yazi-chooser}',
+  ':redraw',
+  ':set mouse false',
+  ':set mouse true',
+]
+
+[keys.normal.space]
+# Reveal the current file in the sibling yazi pane (macOS DDS socket lives under DARWIN_USER_TEMP_DIR)
+"r" = ":sh TMPDIR=$(getconf DARWIN_USER_TEMP_DIR) ya emit-to 1717 reveal %{buffer_name}"
+
+# DEFAULTS — do NOT rebind (already provided by helix):
+#   ]g/[g goto next/prev change · ]G/[G last/first change · Space-g changed_file_picker
+#   Space-/ global_search · Space-f file_picker · Space-k hover

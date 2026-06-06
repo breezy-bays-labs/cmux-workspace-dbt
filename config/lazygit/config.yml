@@ -1,0 +1,12 @@
+# cide base IDE — lazygit config (loaded via LG_CONFIG_FILE; never writes the user's config)
+update:
+  method: never # zero-egress: no update-check phone-home (egress policy)
+disableStartupPopups: true
+gui:
+  nerdFontsVersion: "3"
+  showFileTree: true
+  showPanelJumps: true
+git:
+  pagers:
+    - colorArg: always
+      pager: delta --paging=never # reuse delta inside lazygit's diff view (unified; panes are narrow)

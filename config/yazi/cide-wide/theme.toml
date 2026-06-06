@@ -1,0 +1,12 @@
+# cide base IDE — yazi theme: a flavor + intentional git-status color overrides only
+[flavor]
+dark  = "catppuccin-mocha"
+light = "catppuccin-mocha"
+
+# git.yazi status sign colors
+[git]
+modified  = { fg = "yellow" }
+added     = { fg = "green" }
+deleted   = { fg = "red", bold = true }
+untracked = { fg = "blue" }
+ignored   = { fg = "gray" }

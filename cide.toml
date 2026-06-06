@@ -1,0 +1,39 @@
+# cide.toml — cide workspace config (dogfood; the Rust cide will own this schema).
+# Read today by bin/hq-wrap ([database]) and bin/cide-* ([ide]).
+
+# ── IDE instance ─────────────────────────────────────────────────────────────
+# A cide IDE instance = a named, coupled set of cmux workspaces (one per role/window).
+# Coupling is FUNCTIONAL (the cide registry + a hidden description tag), so the visible
+# workspace names can all be the SAME for human UX — they don't carry the join key.
+#
+#   name               IDE identity (default: repo/dir name); coupled workspaces share it as their visible name
+#   layout             single-landscape | single-portrait | dual-landscape | dual-portrait | landscape-portrait
+#   on_missing_window  reuse (open in an existing same-orientation window — right monitor, no drag)
+#                      | new (always a fresh window — lands on the main monitor, drag once)
+[ide]
+name              = "cide-dbt"
+layout            = "landscape-portrait"
+on_missing_window = "reuse"
+
+# ── Database target ──────────────────────────────────────────────────────────
+# v1: ONE connection = ONE target. hq-wrap opens this when launched with no file
+# argument (e.g. as a tab in the explorer pane). Opening a database FILE from yazi
+# ignores this and opens that file instead.
+#
+#   adapter     duckdb | sqlite            (default: duckdb)
+#   connection  path to a local db file, OR a URI (e.g. md:<db> for MotherDuck)
+#   read_only   true | false              (default: false; duckdb only for now)
+#
+# Resolution order for the no-arg launch:
+#   1. this [database].connection (explicit)            ← you set it
+#   2. the derived dbt warehouse (profiles.yml)         ← auto, dbt workspaces
+#   3. in-memory duckdb                                  ← fallback
+#
+# Egress: a local path is air-gapped. A remote URI (md:, …) is an EXPLICIT,
+# documented opt-in — never silent. duckdb auto-extension-install is disabled via
+# config/duckdb/cide-init.sql, so a missing extension fails loud instead of fetching.
+
+[database]
+# adapter    = "duckdb"
+# connection = "warehouse/dev.duckdb"
+# read_only  = false

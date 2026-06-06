@@ -1,0 +1,73 @@
+# cide base IDE — yazi config (yazi 26.1.22). [mgr] not [manager] (deprecated 25.5.28).
+[mgr]
+ratio          = [1, 4, 0]   # parent:current:preview — 0 hides preview (sidebar mode)
+sort_by        = "natural"
+sort_sensitive = false
+sort_dir_first = true
+show_hidden    = true
+show_symlink   = true
+linemode       = "none"      # git.yazi injects status via Linemode:children_add; "git" is NOT a valid
+                             # linemode (it was printing the literal word "git" on every file)
+scrolloff      = 5
+
+# git.yazi fetchers — yazi 26.5.6 uses `group` (the `id` field was dropped after 26.1.22)
+[[plugin.prepend_fetchers]]
+url   = "*"
+run   = "git"
+group = "git"
+
+[[plugin.prepend_fetchers]]
+url   = "*/"
+run   = "git"
+group = "git"
+
+# Openers — yazi passes files as "$@" (NOT %s); rules match by name/mime (NOT url).
+# `edit` → cide-open: opens in the IDE-instance editor (helix), which may be on ANOTHER
+# monitor/cmux-workspace (cross-pane routing). markdown → cmux live viewer as a split.
+[opener]
+edit = [
+  { run = 'cide-open "$@"', block = false, desc = "cide editor (cross-pane)", for = "unix" },
+]
+markdown = [
+  { run = 'cide-md-open "$@"', block = false, desc = "cide markdown (helix + live preview)", for = "unix" },
+]
+# Data viewers — blocking overlays in the explorer pane (q returns to yazi). Default-open
+# for their type (purpose-built beats helix for huge dbt artifacts / wide CSVs); `edit`
+# stays available as the alternate (yazi open menu).
+json = [
+  { run = 'jless "$@"', block = true, desc = "jless (JSON viewer)", for = "unix" },
+]
+csv = [
+  { run = 'csvlens "$@"', block = true, desc = "csvlens (CSV/TSV viewer)", for = "unix" },
+]
+log = [
+  { run = 'lnav "$@"', block = true, desc = "lnav (log viewer)", for = "unix" },
+]
+# SQL/db explorer (harlequin via hq-wrap) — opens a database file as an interactive SQL
+# IDE in the explorer pane; hq-wrap picks the adapter by extension and applies zero-egress
+# duckdb defaults. .sql model files still route to `edit` (helix), NOT harlequin.
+database = [
+  { run = 'hq-wrap "$@"', block = true, desc = "harlequin (SQL IDE)", for = "unix" },
+]
+
+[open]
+rules = [
+  { url  ="*.md",             use = ["markdown", "edit", "reveal"] },
+  { url  ="*.markdown",       use = ["markdown", "edit", "reveal"] },
+  { url  ="*.json",           use = ["json", "edit", "reveal"] },
+  { url  ="*.json5",          use = ["json", "edit", "reveal"] },
+  { url  ="*.csv",            use = ["csv", "edit", "reveal"] },
+  { url  ="*.tsv",            use = ["csv", "edit", "reveal"] },
+  { url  ="*.log",            use = ["log", "edit", "reveal"] },
+  { url  ="*.duckdb",         use = ["database", "reveal"] },
+  { url  ="*.ddb",            use = ["database", "reveal"] },
+  { url  ="*.sqlite",         use = ["database", "reveal"] },
+  { url  ="*.sqlite3",        use = ["database", "reveal"] },
+  { url  ="*.db",             use = ["database", "reveal"] },
+  { mime = "text/*",           use = ["edit", "reveal"] },
+  { mime = "application/json", use = ["edit", "reveal"] },
+  { mime = "application/toml", use = ["edit", "reveal"] },
+  { mime = "application/yaml", use = ["edit", "reveal"] },
+  { url  ="*/",               use = ["edit", "open", "reveal"] },
+  { url  ="*",                use = ["edit", "open", "reveal"] },
+]

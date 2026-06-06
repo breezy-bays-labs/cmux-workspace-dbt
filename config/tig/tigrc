@@ -1,0 +1,6 @@
+# cide base IDE — tig config (loaded via TIGRC_USER=config/tig/tigrc)
+set wrap-lines    = yes      # wrap long lines instead of truncating (the right-pane fix)
+set line-graphics = utf-8
+set tab-size      = 2
+set ignore-case   = smart-case
+set blame-options = -C -C -C  # follow code moved/copied across files in blame
