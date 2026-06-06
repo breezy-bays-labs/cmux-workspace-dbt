@@ -1,5 +1,6 @@
 # cide-editor.sh — shared IDE-instance state for cide: editor-target resolution,
 # a small registry, and self-healing regeneration of role-workspaces.
+# shellcheck shell=sh
 # Sourced by bin/cide-open, bin/cide-md-open, bin/cide-set-editor, bin/cide-regen.
 # Requires DBT_WS_HOME set before sourcing (callers do this).
 #
@@ -30,7 +31,7 @@ cide_toml_get() {  # <section> <key>
   ' "$_f" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'\$/\\1/"
 }
 
-cide_ide_name() { _n="$(cide_toml_get ide name)"; [ -n "$_n" ] && printf '%s' "$_n" || basename "$DBT_WS_HOME"; }
+cide_ide_name() { _n="$(cide_toml_get ide name)"; if [ -n "$_n" ]; then printf '%s' "$_n"; else basename "$DBT_WS_HOME"; fi; }
 
 # --- registry (sh-simple; pipe-delimited; one row per instance+role) ----------
 cide_registry_log() {  # instance role ws pane sf win
