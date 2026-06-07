@@ -54,9 +54,14 @@ EOF
   if [ -n "$dry" ]; then echo "cide-jump: -> agent${_want:+ $_want}  win=${_twin:-?} ws=$_bw surface=$_bs"; exit 0; fi
   [ -n "$_twin" ] && cmux focus-window --window "$_twin" >/dev/null 2>&1 || true
   cmux select-workspace --workspace "$_bw" >/dev/null 2>&1 || true
-  cmux rpc surface.focus "{\"surface\":\"$_bs\"}" >/dev/null 2>&1 || true
-  echo "cide-jump -> agent${_want:+ $_want} ($_bs)"
-  exit 0
+  # focus the agent's surface (tab) — focus-panel selects a surface within its pane,
+  # works same-pane AND cross-window; UUIDs resolve globally.
+  if cmux focus-panel --panel "$_bs" --workspace "$_bw" >/dev/null 2>&1; then
+    echo "cide-jump -> agent${_want:+ $_want} ($_bs)"
+    exit 0
+  fi
+  echo "cide-jump: resolved agent${_want:+ $_want} ($_bs) but focus failed" >&2
+  exit 1
 }
 
 name="$(cide_ide_name)"
