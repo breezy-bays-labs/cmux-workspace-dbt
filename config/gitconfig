@@ -9,7 +9,7 @@
 	pager = delta
 
 [delta]
-	syntax-theme = Dracula
+	syntax-theme = Catppuccin Mocha   # cide-theme managed (a bat theme name)
 	navigate     = true        # n/N jump between diff sections
 	line-numbers = true
 	side-by-side = false       # unified in narrow panes; needs ~120+ cols for side-by-side

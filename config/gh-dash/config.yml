@@ -33,3 +33,6 @@ repoPaths:
 
 pager:
   diff: delta
+
+# No theme block: gh-dash follows terminal colors, so it tracks the cide theme
+# (ghostty/cmux) — switched by `cide-theme`, no per-theme palette maintained here.

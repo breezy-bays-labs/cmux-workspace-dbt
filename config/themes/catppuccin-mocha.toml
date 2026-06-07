@@ -1,0 +1,13 @@
+# cide theme — Catppuccin Mocha. `cide-theme catppuccin-mocha` applies these per-tool names.
+# Tools using terminal ANSI colors (lazygit/tig/gh-dash) follow ghostty/cmux automatically.
+[tool]
+helix     = "catppuccin_mocha"   # helix theme (built-in)
+btop      = "catppuccin_mocha"   # btop color_theme (config/btop/themes/ — hand-written)
+bat       = "Catppuccin Mocha"   # delta syntax-theme (a bat theme name)
+yazi      = "catppuccin-mocha"   # yazi flavor (dir name under config/yazi/*/flavors/)
+harlequin = "catppuccin-mocha"   # harlequin --theme
+ghostty   = "Catppuccin Mocha"   # cmux + ghostty (via `cmux themes set`)
+
+[install]
+# If the yazi flavor isn't installed, cide-theme prints: ya pkg add <this>
+yazi_flavor = "yazi-rs/flavors:catppuccin-mocha"

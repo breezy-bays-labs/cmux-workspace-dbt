@@ -1,0 +1,11 @@
+# cide theme — Tokyo Night. `cide-theme tokyonight`.
+[tool]
+helix     = "tokyonight"
+btop      = "tokyo-night"        # bundled in btop's share dir
+bat       = "tokyonight_night"   # delta syntax-theme
+yazi      = "tokyo-night"        # yazi flavor (needs install — see [install])
+harlequin = "tokyo-night"
+ghostty   = "TokyoNight"
+
+[install]
+yazi_flavor = "yazi-rs/flavors:tokyo-night"

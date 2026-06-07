@@ -15,6 +15,14 @@ name              = "cide-dbt"
 layout            = "landscape-portrait"
 on_missing_window = "reuse"
 
+# ── Theme ────────────────────────────────────────────────────────────────────
+# The active cide theme. `cide-theme <name>` applies config/themes/<name>.toml across all
+# tools (helix/yazi/btop/delta/harlequin) + cmux/ghostty, and updates this value. Tools that
+# use terminal ANSI colors (lazygit/tig/gh-dash) follow cmux/ghostty automatically.
+# Seeded: catppuccin-mocha · tokyonight · nord · gruvbox.
+[theme]
+active = "catppuccin-mocha"
+
 # ── Database target ──────────────────────────────────────────────────────────
 # v1: ONE connection = ONE target. hq-wrap opens this when launched with no file
 # argument (e.g. as a tab in the explorer pane). Opening a database FILE from yazi
