@@ -3,9 +3,6 @@
 helix     = "tokyonight"
 btop      = "tokyo-night"        # bundled in btop's share dir
 bat       = "tokyonight_night"   # delta syntax-theme
-yazi      = "tokyo-night"        # yazi flavor (needs install — see [install])
+yazi      = "tokyonight"         # cide-shipped flavor (hand-written): config/yazi/*/flavors/tokyonight.yazi
 harlequin = "tokyo-night"
 ghostty   = "TokyoNight"
-
-[install]
-yazi_flavor = "yazi-rs/flavors:tokyo-night"

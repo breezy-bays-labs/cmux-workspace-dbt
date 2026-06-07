@@ -3,9 +3,6 @@
 helix     = "gruvbox"
 btop      = "gruvbox_dark"       # bundled in btop's share dir
 bat       = "gruvbox-dark"       # delta syntax-theme
-yazi      = "gruvbox-dark"       # yazi flavor (needs install — see [install])
+yazi      = "gruvbox"            # cide-shipped flavor (hand-written): config/yazi/*/flavors/gruvbox.yazi
 harlequin = "gruvbox"
 ghostty   = "Gruvbox Dark"
-
-[install]
-yazi_flavor = "yazi-rs/flavors:gruvbox-dark"

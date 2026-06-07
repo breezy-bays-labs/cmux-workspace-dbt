@@ -1,0 +1,11 @@
+# cide theme — Dracula. `cide-theme dracula`. Full coverage incl. yazi (official flavor).
+[tool]
+helix     = "dracula"
+btop      = "dracula"            # bundled in btop's share dir
+bat       = "Dracula"            # delta syntax-theme
+yazi      = "dracula"            # yazi flavor (yazi-rs/flavors:dracula — installed)
+harlequin = "dracula"
+ghostty   = "Dracula"
+
+[install]
+yazi_flavor = "yazi-rs/flavors:dracula"
