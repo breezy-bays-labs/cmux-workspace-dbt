@@ -105,6 +105,8 @@ _ws_tag_space() {  # <ws-uuid> <space-id>
 cmd_new() {
   _name="${1:-}"
   [ -n "$_name" ] || { echo "usage: cide-space new <name>" >&2; exit 64; }
+  # meta is |-delimited and parsed with cut -d'|'; a '|' in the name would corrupt it.
+  case "$_name" in *"|"*) echo "cide-space: name must not contain '|'." >&2; exit 64 ;; esac
   if [ -n "$(_resolve "$_name")" ]; then
     echo "cide-space: a space named/id '$_name' already exists (names are unique)." >&2; exit 1
   fi
@@ -133,8 +135,10 @@ cmd_new() {
     _ws_tag_space "$_ws" "$_id" || echo "cide-space: warning — failed to tag $_ws" >&2
   done
 
-  # dedup the manifest; recompute count from the file (the pipe above is a subshell)
-  if [ -s "$_dir/members" ]; then sort -u "$_dir/members" -o "$_dir/members" 2>/dev/null || true; fi
+  # ONE manifest line per member — no dedup. jq already emits each workspace once, and
+  # distinct plain repo terminals share an identical cwd|role|label anchor, so sort -u
+  # would silently drop real members (and lose them for Phase-2 relaunch). Count from
+  # the file; the pipe above is a subshell so it can't export the count directly.
   _count="$(awk 'NF' "$_dir/members" 2>/dev/null | wc -l | tr -d ' ')"
 
   printf '%s|%s|%s\n' "$(date +%s)" created "members=$_count" >> "$_dir/history"
@@ -202,6 +206,9 @@ cmd_current() {
 
 # close every LIVE member of a space, except the caller's own workspace (closing the
 # terminal you're running from would kill this command mid-run). Prints the count.
+# NOTE (many-to-many): a workspace tagged cide:spaces=a,b is closed by `close a` even
+# though it still belongs to open space b. Acceptable for Phase 1; a future refinement
+# could skip workspaces still claimed by another open space.
 _close_members() {  # <space-id>
   _self="$(printf '%s' "${CMUX_WORKSPACE_ID:-}" | tr 'a-f' 'A-F')"
   _cn=0
