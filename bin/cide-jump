@@ -7,14 +7,14 @@
 # switching (cmux can't otherwise select the right workspace on the other monitor in one go).
 set -eu
 
-usage() { printf 'cide-jump [role] [--dry]\n  Focus the IDE other role-workspace (default: toggle editor<->tools).\n  -h, --help   show this help\n'; }
-dry=""; role=""
+usage() { printf 'cide-jump [role] [label] [--dry]\n  Focus the IDE other role-workspace (default: toggle editor<->tools).\n  role=agent [label] focuses an agent surface across monitors.\n  -h, --help   show this help\n'; }
+dry=""; role=""; label=""
 for a in "$@"; do
   case "$a" in
     -h|--help) usage; exit 0 ;;
     --dry)     dry=1 ;;
     -*)        printf 'cide-jump: unknown option %s\n' "$a" >&2; exit 64 ;;
-    *)         role="$a" ;;
+    *)         if [ -z "$role" ]; then role="$a"; else label="$a"; fi ;;
   esac
 done
 
@@ -26,7 +26,46 @@ DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
 # shellcheck source=/dev/null
 . "$DBT_WS_HOME/lib/cide-editor.sh"
 
+# Focus a live agent surface (role=agent). Agents are surface-grained, so this path
+# uses cmux's native session store + cide labels (not the workspace registry): pick by
+# label (or the most-recently-active agent), then focus its window/workspace/tab.
+agent_jump() {  # [label]
+  _want="${1:-}"; _live="$(cide_live_uuids)"; _members="$(cide_member_workspaces)"
+  _t="$(printf '\t')"; _bs=""; _bw=""; _bu=-1
+  while IFS="$_t" read -r _surf _ws _upd _slabel; do
+    [ -n "$_surf" ] || continue
+    printf '%s\n' "$_live" | grep -qiF "$_surf" || continue   # live surfaces only
+    printf '%s\n' "$_members" | grep -qiF "$_ws" || continue  # this cide instance only
+    _clabel="$(cide_agent_label_of "$_surf")"; _lab="${_clabel:-$_slabel}"
+    _u="${_upd:-0}"
+    if [ -n "$_want" ]; then
+      if [ "$_lab" = "$_want" ]; then _bs="$_surf"; _bw="$_ws"; break; fi
+    else
+      if [ "$_u" -gt "$_bu" ] 2>/dev/null; then _bu="$_u"; _bs="$_surf"; _bw="$_ws"; fi
+    fi
+  done <<EOF
+$(jq -r '.sessions | to_entries[] | .value |
+  [ .surfaceId, .workspaceId, ((.updatedAt // 0) | floor | tostring),
+    ( (.launchCommand.arguments // []) as $a | (($a|index("--name")) // ($a|index("-n"))) as $i | if $i then ($a[$i+1] // "") else "" end )
+  ] | @tsv' "${CIDE_AGENT_STORE:-$HOME/.cmuxterm/claude-hook-sessions.json}" 2>/dev/null)
+EOF
+  [ -n "$_bs" ] || { echo "cide-jump: no live agent${_want:+ \"$_want\"} found — launch one with 'cide-agent'." >&2; exit 1; }
+  _twin="$(cide_ws_window "$_bw" 2>/dev/null || true)"
+  if [ -n "$dry" ]; then echo "cide-jump: -> agent${_want:+ $_want}  win=${_twin:-?} ws=$_bw surface=$_bs"; exit 0; fi
+  [ -n "$_twin" ] && cmux focus-window --window "$_twin" >/dev/null 2>&1 || true
+  cmux select-workspace --workspace "$_bw" >/dev/null 2>&1 || true
+  # focus the agent's surface (tab) — focus-panel selects a surface within its pane,
+  # works same-pane AND cross-window; UUIDs resolve globally.
+  if cmux focus-panel --panel "$_bs" --workspace "$_bw" >/dev/null 2>&1; then
+    echo "cide-jump -> agent${_want:+ $_want} ($_bs)"
+    exit 0
+  fi
+  echo "cide-jump: resolved agent${_want:+ $_want} ($_bs) but focus failed" >&2
+  exit 1
+}
+
 name="$(cide_ide_name)"
+if [ "$role" = agent ]; then agent_jump "$label"; fi
 
 # Currently-focused workspace -> its role (if registered).
 fid="$(cmux identify --json 2>/dev/null || true)"

@@ -1,0 +1,161 @@
+#!/bin/sh
+# cide-agent — first-class AI agent surfaces for cide, composed over cmux's native
+# agent machinery. cmux hooks capture each agent session; the launch label (claude
+# -n <label>) is the human name shown in the tab, the vault, and claude's /resume.
+# Claude-only for now (codex is on the backburner; the cide.toml [agents.<name>] slot
+# is kept for its return).
+#
+#   cide-agent [new] [label]    launch the agent in THIS surface, named + tracked.
+#                               Open a new cmux tab and run again for parallel chats.
+#   cide-agent ls               the vault — active vs dead sessions + time since active.
+#   cide-agent rename <label>   rename this agent surface (cmux tab + cide vault label).
+#
+# Cross-monitor focus is `cide-jump agent [label]`.
+set -eu
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+usage() {
+  cat <<'EOF'
+cide-agent — AI agent surfaces for cide (claude-only for now)
+  cide-agent [new] [label]    launch the agent in this surface, named + tracked
+  cide-agent ls               vault: active vs dead sessions + time since last active
+  cide-agent rename <label>   rename this agent surface (tab + cide vault label)
+  -h, --help                  show this help
+EOF
+}
+
+# humanize a duration in seconds -> 5s / 3m / 2h / 4d
+_since() {
+  awk -v s="${1:-0}" 'BEGIN{
+    if (s<0) s=0
+    if      (s<60)    printf "%ds", s
+    else if (s<3600)  printf "%dm", int(s/60)
+    else if (s<86400) printf "%dh", int(s/3600)
+    else              printf "%dd", int(s/86400)
+  }'
+}
+
+# Ensure cmux's claude agent hooks are installed (once; guarded by a marker so we
+# don't shell out on every launch). Without hooks cmux can't capture the session.
+_ensure_hooks() {
+  _m="$CIDE_STATE/hooks-claude"
+  [ -f "$_m" ] && return 0
+  mkdir -p "$CIDE_STATE"
+  cmux hooks setup --agent claude >/dev/null 2>&1 || true
+  : > "$_m"
+}
+
+# --- new: launch the agent in the current surface, named + tracked -----------
+cmd_new() {
+  _name="$(cide_ide_name)"
+  _cmd="$(cide_toml_get agents.claude command)";   _cmd="${_cmd:-claude}"
+  _nflag="$(cide_toml_get agents.claude name_flag)"; _nflag="${_nflag:---name}"
+
+  _label="${1:-}"
+  if [ -z "$_label" ]; then
+    _n=0
+    [ -f "$CIDE_AGENTS" ] && _n="$(grep -c "^$_name|" "$CIDE_AGENTS" 2>/dev/null || true)"
+    _label="claude-$(( ${_n:-0} + 1 ))"
+  fi
+
+  _ensure_hooks
+
+  # Record the cide-managed agent surface (the durable checkpoint hydrates later via
+  # the vault); rename the tab to match the session label.
+  _sid="$(cide_cur_surface)"
+  mkdir -p "$CIDE_STATE"
+  printf '%s|%s|%s|%s|%s\n' "$_name" "$_label" "${_sid:-?}" "$PWD" "$(date +%s)" >> "$CIDE_AGENTS"
+  cmux rename-tab "$_label" >/dev/null 2>&1 || true
+
+  # Build argv: <cmd> [name_flag label] [configured args...]
+  set --
+  _args_raw="$(cide_toml_get agents.claude args)"
+  _inner="${_args_raw#[}"; _inner="${_inner%]}"
+  _OIFS=$IFS; IFS=','
+  for _a in $_inner; do
+    _a="$(printf '%s' "$_a" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//')"
+    [ -n "$_a" ] && set -- "$@" "$_a"
+  done
+  IFS=$_OIFS
+  [ -n "$_nflag" ] && set -- "$_nflag" "$_label" "$@"
+
+  printf 'cide-agent: launching %s as "%s"\n' "$_cmd" "$_label" >&2
+  exec "$_cmd" "$@"
+}
+
+# --- ls: the vault — active vs dead agent sessions + time since last active ----
+cmd_ls() {
+  if [ ! -f "$CIDE_AGENT_STORE" ]; then
+    echo "cide-agent: no cmux agent session store yet ($CIDE_AGENT_STORE) — launch an agent first." >&2
+    return 0
+  fi
+  _now="$(date +%s)"
+  _live="$(cide_live_uuids)"
+  _t="$(printf '\t')"
+  _active=""; _dead=""
+
+  # Scope: sessions whose cwd is THIS instance's repo (catches dead sessions whose
+  # workspace was already closed — those are gone from the live member list).
+  while IFS="$_t" read -r _surf _life _upd _cwd _slabel; do
+    [ -n "$_surf" ] || continue
+    _clabel="$(cide_agent_label_of "$_surf")"
+    _label="${_clabel:-${_slabel:-(unnamed)}}"
+    _ago="$(_since "$(( _now - ${_upd:-$_now} ))")"
+    _row="$(printf '  %-18s %-9s %-6s %s' "$_label" "$_life" "$_ago" "$_cwd")"
+    if printf '%s\n' "$_live" | grep -qiF "$_surf"; then
+      _active="${_active}${_row}
+"
+    else
+      _dead="${_dead}${_row}
+"
+    fi
+  done <<EOF
+$(jq -r --arg repo "$DBT_WS_HOME" '.sessions | to_entries[] | .value
+  | select(.cwd == $repo)
+  | [ .surfaceId,
+      (.agentLifecycle // "?"),
+      ((.updatedAt // 0) | floor | tostring),
+      (.cwd // "?"),
+      ( (.launchCommand.arguments // []) as $a
+        | (($a | index("--name")) // ($a | index("-n"))) as $i
+        | if $i then ($a[$i+1] // "") else "" end )
+    ] | @tsv' "$CIDE_AGENT_STORE" 2>/dev/null)
+EOF
+
+  printf 'cide vault — agent sessions (instance: %s)\n' "$_name_disp"
+  printf '  %-18s %-9s %-6s %s\n' "LABEL" "STATE" "AGO" "CWD"
+  printf '\nACTIVE\n'
+  if [ -n "$_active" ]; then printf '%s' "$_active"; else echo "  (none)"; fi
+  printf '\nDEAD (history)\n'
+  if [ -n "$_dead" ]; then printf '%s' "$_dead"; else echo "  (none)"; fi
+}
+
+# --- rename: rename this agent surface (tab + cide vault label) ---------------
+cmd_rename() {
+  [ -n "${1:-}" ] || { echo "usage: cide-agent rename <label>" >&2; exit 64; }
+  _name="$(cide_ide_name)"; _label="$1"
+  _sid="$(cide_cur_surface)"
+  cmux rename-tab "$_label" >/dev/null 2>&1 || true
+  mkdir -p "$CIDE_STATE"
+  printf '%s|%s|%s|%s|%s\n' "$_name" "$_label" "${_sid:-?}" "$PWD" "$(date +%s)" >> "$CIDE_AGENTS"
+  echo "cide-agent: renamed surface to \"$_label\" (tab + cide vault)."
+  echo "  note: the claude session's own name is fixed at launch (-n); the vault uses the cide label."
+}
+
+_name_disp="$(cide_ide_name)"
+sub="${1:-new}"
+case "$sub" in
+  -h|--help) usage; exit 0 ;;
+  ls)        shift; cmd_ls "$@" ;;
+  rename)    shift; cmd_rename "$@" ;;
+  new)       shift; cmd_new "$@" ;;
+  -*)        printf 'cide-agent: unknown option %s\n' "$sub" >&2; usage >&2; exit 64 ;;
+  *)         printf 'cide-agent: unknown subcommand %s (try: new, ls, rename)\n' "$sub" >&2; exit 64 ;;
+esac

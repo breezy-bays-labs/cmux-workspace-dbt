@@ -15,6 +15,37 @@ name              = "cide-dbt"
 layout            = "landscape-portrait"
 on_missing_window = "reuse"
 
+# ── Agents ───────────────────────────────────────────────────────────────────
+# AI agent surfaces are first-class in cide, composed over cmux's native agent
+# machinery (cmux hooks capture each session; the launch label rides along so the
+# tab, the vault, and claude's /resume all match). Launch one with `cide-agent` in
+# any tab — open a new cmux tab and run it again for parallel chats in the same pane.
+# `cide-agent ls` is the vault (active vs dead sessions + time since last active);
+# `cide-jump agent [label]` focuses an agent surface across monitors.
+#
+#   active     which agent types are enabled (v1: claude only; codex is on deck)
+#   placement  where the agent pane lives — landscape | portrait | both
+#              (honored once layout presets land, #21; today agents open in the
+#               current surface)
+[agents]
+active    = ["claude"]
+placement = "landscape"
+
+# Per-agent launch setup. `command` + `args` are YOUR opinionated defaults; cide
+# ships a SAFE default (no forced model, no skipped permissions) — add what you want
+# per workspace, e.g. args = ["--model", "opus", "--dangerously-skip-permissions"].
+# `name_flag` is how cide passes the session label so tab + session + vault match.
+[agents.claude]
+command   = "claude"
+args      = []
+name_flag = "--name"
+# resume_flag = "--resume"   # used by conversation-resume self-heal (follow-up)
+
+# codex on the backburner (claude-only today); slot kept for its return:
+# [agents.codex]
+# command = "codex"
+# args    = []
+
 # ── Theme ────────────────────────────────────────────────────────────────────
 # The active cide theme. `cide-theme <name>` applies config/themes/<name>.toml across all
 # tools (helix/yazi/btop/delta/harlequin) + cmux/ghostty, and updates this value. Tools that

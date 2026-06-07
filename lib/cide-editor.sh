@@ -150,3 +150,53 @@ cide_regen_editor() {  # [file...]
   cide_registry_log "$_name" editor "$EDITOR_WS" "${EDITOR_PANE:-}" "$EDITOR_SF" "$_win"
   return 0
 }
+
+# --- agent surfaces (claude-only v1) -----------------------------------------
+# The agent role is the first SURFACE-grained, multi-instance role, so it does NOT
+# use the workspace-grained editor/tools registry. cide composes over cmux's native
+# agent machinery instead: cmux hooks capture each session (sessionId/checkpoint,
+# surfaceId, lifecycle, updatedAt, launch command incl. our -n label). cide keeps only
+# a tiny append-only index of the surfaces IT launched, so the vault can show dead
+# sessions with a human label even after cmux's lossy store forgets them.
+#   CIDE_AGENTS:      instance|label|surfaceId|cwd|started   (never pruned = history)
+#   CIDE_AGENT_STORE: cmux's native claude session store (read-only to us)
+CIDE_AGENTS="${CIDE_AGENTS:-$CIDE_STATE/agents}"
+CIDE_AGENT_STORE="${CIDE_AGENT_STORE:-$HOME/.cmuxterm/claude-hook-sessions.json}"
+
+# All LIVE surface UUIDs (uppercased), one per line — used to split active vs dead.
+cide_live_uuids() {
+  cmux tree --all --id-format uuids 2>/dev/null \
+    | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+    | tr 'a-f' 'A-F' | sort -u
+}
+
+# Caller's current surface UUID (the surface a cide-* tool was invoked from).
+cide_cur_surface() {
+  cmux identify --json --id-format both 2>/dev/null \
+    | grep -oiE '"surface_id"[[:space:]]*:[[:space:]]*"[0-9a-f-]{36}"' \
+    | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+    | head -1 | tr 'a-f' 'A-F'
+}
+
+# cide label override for a surface UUID (latest row wins); empty if none.
+cide_agent_label_of() {  # <surface-uuid>
+  [ -f "$CIDE_AGENTS" ] || return 0
+  grep -iF "|$1|" "$CIDE_AGENTS" 2>/dev/null | tail -1 | awk -F'|' '{print $2}'
+}
+
+# --- instance scope boundary -------------------------------------------------
+# Member workspace UUIDs (uppercased) of THIS cide instance, one per line. A workspace
+# is a member if its cwd is the instance repo (DBT_WS_HOME) OR its description carries
+# the cide:instance=<name> tag (explicit coupling, possibly cross-dir/cross-window).
+# THIS IS THE SCOPE: cide IDE features (vault, jump, …) operate only over members;
+# agent sessions in unrelated workspaces (other repos) are out of scope.
+cide_member_workspaces() {
+  _nm="$(cide_ide_name)"
+  cmux rpc workspace.list '{}' 2>/dev/null \
+    | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" \
+        '(.workspaces // .)[]
+           | select((.current_directory==$repo)
+                    or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
+           | .id' 2>/dev/null \
+    | tr 'a-f' 'A-F' | sort -u
+}
