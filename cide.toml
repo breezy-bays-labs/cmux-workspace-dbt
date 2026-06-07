@@ -15,6 +15,12 @@ name              = "cide-dbt"
 layout            = "landscape-portrait"
 on_missing_window = "reuse"
 
+# This [ide] block is the implicit DEFAULT space. `cide-space new <name>` snapshots the
+# current workspaces into a named space ABOVE it (a container across windows) and makes
+# it active, so jump + the vault scope to it; `cide-space ls|use|current|close|rm` manage
+# them. Membership is many-to-many (a workspace can belong to several spaces). The cide
+# store ($CIDE_STATE/spaces) is the source of truth; live members carry a cide:spaces tag.
+
 # ── Agents ───────────────────────────────────────────────────────────────────
 # AI agent surfaces are first-class in cide, composed over cmux's native agent
 # machinery (cmux hooks capture each session; the launch label rides along so the

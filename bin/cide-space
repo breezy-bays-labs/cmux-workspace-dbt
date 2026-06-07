@@ -1,0 +1,264 @@
+#!/bin/sh
+# cide-space — IDE spaces: a named, lifecycle-managed container ABOVE cmux
+# workspaces/windows. The repo-derived instance is the implicit DEFAULT space;
+# `cide-space new <name>` snapshots the current members into a named space and makes
+# it active, so cide features (jump, vault) scope to it. Composes over cmux: each
+# member workspace is tagged with a multi-valued `cide:spaces=<id>` description token,
+# and the cide store under $CIDE_STATE/spaces is the source of truth.
+#
+#   cide-space [ls]            list spaces (status, members, last active); * = active
+#   cide-space new <name>      create a space from the current members; make it active
+#   cide-space use <name|id>   set the active space (scopes jump/vault); 'default' = repo
+#   cide-space current         show the active space
+#   cide-space close <name|id> close member workspaces; KEEP the record + history
+#   cide-space rm <name|id>    close + purge the record (confirm unless -f)
+#
+# Phase 1 (#28): store + CRUD + multi-membership + active-space scoping. `open`/relaunch
+# + agent conversation-resume are Phase 2 (#29); full-fidelity layout relaunch Phase 3.
+# A space membership is many-to-many — a workspace can carry several cide:spaces ids.
+set -eu
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+usage() {
+  cat <<'EOF'
+cide-space — IDE spaces (named containers above cmux workspaces/windows)
+  cide-space [ls]            list spaces (status, members, last active); * = active
+  cide-space new <name>      create a space from the current members; make it active
+  cide-space use <name|id>   set the active space; 'default' returns to repo scope
+  cide-space current         show the active space
+  cide-space close <name|id> close member workspaces; keep the record + history
+  cide-space rm <name|id> [-f]  close + purge the record (confirm unless -f)
+  -h, --help                 show this help
+EOF
+}
+
+# humanize a duration in seconds -> 5s / 3m / 2h / 4d
+_since() {
+  awk -v s="${1:-0}" 'BEGIN{
+    if (s<0) s=0
+    if      (s<60)    printf "%ds", s
+    else if (s<3600)  printf "%dm", int(s/60)
+    else if (s<86400) printf "%dh", int(s/3600)
+    else              printf "%dd", int(s/86400)
+  }'
+}
+
+# kebab-slug a name (stable id base; the id never changes so tags survive a rename)
+_slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+    | sed -e 's/[^a-z0-9]\{1,\}/-/g' -e 's/^-//' -e 's/-$//'
+}
+
+# resolve <name|id> -> id (matches the meta id OR name field); prints nothing if absent
+_resolve() {  # <name|id>
+  [ -d "$CIDE_SPACES" ] || return 0
+  for _rd in "$CIDE_SPACES"/*/; do
+    [ -f "$_rd/meta" ] || continue
+    _rid="$(cut -d'|' -f1 "$_rd/meta")"; _rnm="$(cut -d'|' -f2 "$_rd/meta")"
+    if [ "$1" = "$_rid" ] || [ "$1" = "$_rnm" ]; then printf '%s' "$_rid"; return 0; fi
+  done
+  return 0
+}
+
+_field() { cut -d'|' -f"$2" "$CIDE_SPACES/$1/meta" 2>/dev/null; }  # <id> <fieldnum>
+
+# read a workspace's current description (empty string if null/absent)
+_ws_desc() {  # <ws-uuid>
+  cmux rpc workspace.list '{}' 2>/dev/null \
+    | jq -r --arg w "$1" '(.workspaces // .)[] | select((.id|ascii_upcase)==$w) | .description // ""' 2>/dev/null \
+    | head -1
+}
+
+# add this space id to a workspace's multi-valued cide:spaces token, PRESERVING any
+# existing cide:instance/role/other tokens. Idempotent. Returns nonzero on write fail.
+_ws_tag_space() {  # <ws-uuid> <space-id>
+  _td="$(_ws_desc "$1")"
+  _tnew="$(printf '%s\n' "$_td" | awk -v id="$2" '
+    {
+      out=""; found=0
+      n=split($0, toks, ";")
+      for (i=1;i<=n;i++) {
+        t=toks[i]; if (t=="") continue
+        if (t ~ /^cide:spaces=/) {
+          found=1; csv=substr(t, index(t,"=")+1); has=0
+          m=split(csv, vals, ",")
+          for (j=1;j<=m;j++) if (vals[j]==id) has=1
+          if (!has) csv=(csv=="" ? id : csv","id)
+          t="cide:spaces=" csv
+        }
+        out=(out=="" ? t : out";"t)
+      }
+      if (!found) out=(out=="" ? "cide:spaces="id : out";cide:spaces="id)
+      print out
+    }')"
+  cmux workspace-action --action set-description --workspace "$1" --description "$_tnew" >/dev/null 2>&1
+}
+
+# --- new: snapshot the current members into a named space; make it active ------
+cmd_new() {
+  _name="${1:-}"
+  [ -n "$_name" ] || { echo "usage: cide-space new <name>" >&2; exit 64; }
+  if [ -n "$(_resolve "$_name")" ]; then
+    echo "cide-space: a space named/id '$_name' already exists (names are unique)." >&2; exit 1
+  fi
+  _slugbase="$(_slug "$_name")"; [ -n "$_slugbase" ] || _slugbase="space"
+  _id="${_slugbase}-$(date +%s)"
+  while [ -d "$CIDE_SPACES/$_id" ]; do _id="${_slugbase}-$(date +%s)-$$"; done
+  _layout="$(cide_toml_get ide layout)"; _layout="${_layout:-unknown}"
+  _dir="$CIDE_SPACES/$_id"
+  _nm_ide="$(cide_ide_name)"
+
+  # member rows of the DEFAULT scope: UUID<tab>cwd<tab>role (role parsed from the tag)
+  _rows="$(cmux rpc workspace.list '{}' 2>/dev/null | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm_ide" '
+    (.workspaces // .)[]
+    | select((.current_directory==$repo) or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
+    | [ (.id|ascii_upcase), (.current_directory // ""), ((.description // "") | ([scan("role=([^;]*)")] | (.[0] // [""]) | .[0])) ]
+    | @tsv' 2>/dev/null || true)"
+
+  mkdir -p "$_dir"
+  printf '%s|%s|%s|%s|%s\n' "$_id" "$_name" open "$(date +%s)" "$_layout" > "$_dir/meta"
+  : > "$_dir/members"
+
+  _t="$(printf '\t')"
+  printf '%s\n' "$_rows" | while IFS="$_t" read -r _ws _cwd _role; do
+    [ -n "$_ws" ] || continue
+    printf '%s|%s|%s\n' "$_cwd" "$_role" "" >> "$_dir/members"
+    _ws_tag_space "$_ws" "$_id" || echo "cide-space: warning — failed to tag $_ws" >&2
+  done
+
+  # dedup the manifest; recompute count from the file (the pipe above is a subshell)
+  if [ -s "$_dir/members" ]; then sort -u "$_dir/members" -o "$_dir/members" 2>/dev/null || true; fi
+  _count="$(awk 'NF' "$_dir/members" 2>/dev/null | wc -l | tr -d ' ')"
+
+  printf '%s|%s|%s\n' "$(date +%s)" created "members=$_count" >> "$_dir/history"
+  mkdir -p "$CIDE_STATE"
+  printf '%s' "$_id" > "$CIDE_CURRENT_SPACE"   # set active LAST (so a half-built space never scopes)
+
+  printf 'cide-space: created "%s" (id %s) — %s member(s); now active.\n' "$_name" "$_id" "$_count"
+  printf '  jump/vault now scope to this space. Run "cide-space use default" to return to the repo scope.\n'
+}
+
+# --- ls: spaces table (the implicit default + every named space) --------------
+cmd_ls() {
+  _cur="$(cide_current_space)"
+  _hdr='%-2s %-24s %-16s %-7s %-7s %s\n'
+  # shellcheck disable=SC2059
+  printf "$_hdr" "" "ID" "NAME" "STATUS" "MEMBERS" "LAST"
+
+  _dmk=" "; [ -z "$_cur" ] && _dmk="*"
+  _dcount="$(cide_space_members "" | awk 'NF' | wc -l | tr -d ' ')"
+  # shellcheck disable=SC2059
+  printf "$_hdr" "$_dmk" "default" "$(cide_ide_name)" "open" "$_dcount" "live"
+
+  [ -d "$CIDE_SPACES" ] || return 0
+  _now="$(date +%s)"
+  for _d in "$CIDE_SPACES"/*/; do
+    [ -f "$_d/meta" ] || continue
+    _id="$(cut -d'|' -f1 "$_d/meta")"; _nm="$(cut -d'|' -f2 "$_d/meta")"
+    _st="$(cut -d'|' -f3 "$_d/meta")"
+    _mc="$(awk 'NF' "$_d/members" 2>/dev/null | wc -l | tr -d ' ')"
+    _last="-"
+    if [ -s "$_d/history" ]; then
+      _ts="$(tail -1 "$_d/history" | cut -d'|' -f1)"
+      case "$_ts" in *[!0-9]*|'') _last="-" ;; *) _last="$(_since "$(( _now - _ts ))")" ;; esac
+    fi
+    _mk=" "; [ "$_id" = "$_cur" ] && _mk="*"
+    # shellcheck disable=SC2059
+    printf "$_hdr" "$_mk" "$_id" "$_nm" "$_st" "$_mc" "$_last"
+  done
+}
+
+# --- use / current: the global active-space marker ----------------------------
+cmd_use() {
+  _arg="${1:-}"
+  [ -n "$_arg" ] || { echo "usage: cide-space use <name|id|default>" >&2; exit 64; }
+  if [ "$_arg" = default ] || [ "$_arg" = "-" ]; then
+    rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true
+    echo "cide-space: active space -> default ($(cide_ide_name) / repo scope)."
+    return 0
+  fi
+  _id="$(_resolve "$_arg")"
+  [ -n "$_id" ] || { echo "cide-space: no space '$_arg' (try 'cide-space ls')." >&2; exit 1; }
+  mkdir -p "$CIDE_STATE"
+  printf '%s' "$_id" > "$CIDE_CURRENT_SPACE"
+  printf 'cide-space: active space -> %s (%s).\n' "$(_field "$_id" 2)" "$_id"
+}
+
+cmd_current() {
+  _cur="$(cide_current_space)"
+  if [ -z "$_cur" ]; then
+    echo "(default: $(cide_ide_name) — repo scope)"
+    return 0
+  fi
+  printf '%s (%s) — status %s\n' "$(_field "$_cur" 2)" "$_cur" "$(_field "$_cur" 3)"
+}
+
+# close every LIVE member of a space, except the caller's own workspace (closing the
+# terminal you're running from would kill this command mid-run). Prints the count.
+_close_members() {  # <space-id>
+  _self="$(printf '%s' "${CMUX_WORKSPACE_ID:-}" | tr 'a-f' 'A-F')"
+  _cn=0
+  for _ws in $(cide_space_members "$1"); do
+    [ -n "$_ws" ] || continue
+    if [ -n "$_self" ] && [ "$_ws" = "$_self" ]; then
+      echo "cide-space: keeping current workspace $_ws (you're in it; close it yourself)." >&2
+      continue
+    fi
+    cmux close-workspace --workspace "$_ws" >/dev/null 2>&1 || echo "cide-space: warning — could not close $_ws" >&2
+    _cn=$(( _cn + 1 ))
+  done
+  printf '%s' "$_cn"
+}
+
+# --- close: close member workspaces; KEEP the record + history ----------------
+cmd_close() {
+  _arg="${1:-}"; [ -n "$_arg" ] || { echo "usage: cide-space close <name|id>" >&2; exit 64; }
+  _id="$(_resolve "$_arg")"; [ -n "$_id" ] || { echo "cide-space: no space '$_arg'." >&2; exit 1; }
+  _n="$(_close_members "$_id")"
+  _tmp="$CIDE_SPACES/$_id/meta.tmp"
+  awk -F'|' 'BEGIN{OFS="|"} {$3="closed"; print}' "$CIDE_SPACES/$_id/meta" > "$_tmp" && mv "$_tmp" "$CIDE_SPACES/$_id/meta"
+  printf '%s|%s|%s\n' "$(date +%s)" closed "closed=$_n" >> "$CIDE_SPACES/$_id/history"
+  if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
+  printf 'cide-space: closed "%s" — %s workspace(s) closed; record + history kept (relaunch in Phase 2).\n' "$(_field "$_id" 2)" "$_n"
+}
+
+# --- rm: close + purge the record (confirm unless -f) -------------------------
+cmd_rm() {
+  _force=0; _arg=""
+  for a in "$@"; do
+    case "$a" in -f|--force) _force=1 ;; -*) echo "cide-space: unknown option $a" >&2; exit 64 ;; *) _arg="$a" ;; esac
+  done
+  [ -n "$_arg" ] || { echo "usage: cide-space rm <name|id> [-f]" >&2; exit 64; }
+  _id="$(_resolve "$_arg")"; [ -n "$_id" ] || { echo "cide-space: no space '$_arg'." >&2; exit 1; }
+  _nm="$(_field "$_id" 2)"
+  if [ "$_force" -ne 1 ] && [ -t 0 ]; then
+    printf 'cide-space: remove "%s" (%s)? closes its workspaces and purges record + history. [y/N] ' "$_nm" "$_id"
+    read -r _ans || _ans=""
+    case "$_ans" in y|Y|yes|YES) : ;; *) echo "cide-space: aborted."; return 0 ;; esac
+  fi
+  _n="$(_close_members "$_id")"
+  if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
+  rm -rf "${CIDE_SPACES:?}/${_id:?}" 2>/dev/null || true
+  printf 'cide-space: removed "%s" (%s) — %s workspace(s) closed; record purged.\n' "$_nm" "$_id" "$_n"
+}
+
+sub="${1:-ls}"
+[ "$#" -gt 0 ] && shift || true
+case "$sub" in
+  -h|--help)   usage; exit 0 ;;
+  new)         cmd_new "$@" ;;
+  ls|list)     cmd_ls "$@" ;;
+  use|switch)  cmd_use "$@" ;;
+  current)     cmd_current "$@" ;;
+  close)       cmd_close "$@" ;;
+  rm|remove)   cmd_rm "$@" ;;
+  -*)          echo "cide-space: unknown option $sub" >&2; usage >&2; exit 64 ;;
+  *)           echo "cide-space: unknown subcommand $sub (try: new ls use current close rm)" >&2; exit 64 ;;
+esac

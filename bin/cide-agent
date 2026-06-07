@@ -101,8 +101,10 @@ cmd_ls() {
   _t="$(printf '\t')"
   _active=""; _dead=""
 
-  # Scope: sessions whose cwd is THIS instance's repo (catches dead sessions whose
-  # workspace was already closed — those are gone from the live member list).
+  # Scope: sessions whose cwd is in the ACTIVE space (default space => the repo). Scoping
+  # by cwd (not live members) is what catches DEAD sessions whose workspace was already
+  # closed — those are gone from the live tree but their cwd still names the space.
+  _cwds_json="$(cide_space_member_cwds "$(cide_current_space)" | jq -Rn '[inputs] | unique')"
   while IFS="$_t" read -r _surf _life _upd _cwd _slabel; do
     [ -n "$_surf" ] || continue
     _clabel="$(cide_agent_label_of "$_surf")"
@@ -117,8 +119,8 @@ cmd_ls() {
 "
     fi
   done <<EOF
-$(jq -r --arg repo "$DBT_WS_HOME" '.sessions | to_entries[] | .value
-  | select(.cwd == $repo)
+$(jq -r --argjson cwds "$_cwds_json" '.sessions | to_entries[] | .value
+  | select(((.cwd // "") as $c | $cwds | index($c)) != null)
   | [ .surfaceId,
       (.agentLifecycle // "?"),
       ((.updatedAt // 0) | floor | tostring),
@@ -129,7 +131,9 @@ $(jq -r --arg repo "$DBT_WS_HOME" '.sessions | to_entries[] | .value
     ] | @tsv' "$CIDE_AGENT_STORE" 2>/dev/null)
 EOF
 
-  printf 'cide vault — agent sessions (instance: %s)\n' "$_name_disp"
+  _cs="$(cide_current_space)"
+  if [ -n "$_cs" ]; then _scope="space: $(cut -d'|' -f2 "$CIDE_SPACES/$_cs/meta" 2>/dev/null)"; else _scope="instance: $(cide_ide_name)"; fi
+  printf 'cide vault — agent sessions (%s)\n' "$_scope"
   printf '  %-18s %-9s %-6s %s\n' "LABEL" "STATE" "AGO" "CWD"
   printf '\nACTIVE\n'
   if [ -n "$_active" ]; then printf '%s' "$_active"; else echo "  (none)"; fi
@@ -149,7 +153,6 @@ cmd_rename() {
   echo "  note: the claude session's own name is fixed at launch (-n); the vault uses the cide label."
 }
 
-_name_disp="$(cide_ide_name)"
 sub="${1:-new}"
 case "$sub" in
   -h|--help) usage; exit 0 ;;
