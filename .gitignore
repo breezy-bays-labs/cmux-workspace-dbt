@@ -9,7 +9,11 @@ err.tmp
 # Session scaffolding (pipeline focus notes etc.); never committed to the public repo
 .claude/
 
-# Yazi plugins/flavors are ya-pkg-managed (versions pinned in each package.toml);
-# reproduce with `ya pkg install` rather than vendoring the third-party code.
+# Yazi plugins + UPSTREAM flavors are ya-pkg-managed (pinned in each package.toml);
+# reproduce with `ya pkg install` rather than vendoring third-party code.
 config/yazi/*/plugins/
-config/yazi/*/flavors/
+config/yazi/*/flavors/*
+# ...but DO commit our hand-written cide flavors (no upstream to reproduce from):
+!config/yazi/*/flavors/tokyonight.yazi/
+!config/yazi/*/flavors/nord.yazi/
+!config/yazi/*/flavors/gruvbox.yazi/

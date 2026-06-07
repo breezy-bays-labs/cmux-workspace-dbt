@@ -1,0 +1,8 @@
+# cide theme — Gruvbox Dark. `cide-theme gruvbox`.
+[tool]
+helix     = "gruvbox"
+btop      = "gruvbox_dark"       # bundled in btop's share dir
+bat       = "gruvbox-dark"       # delta syntax-theme
+yazi      = "gruvbox"            # cide-shipped flavor (hand-written): config/yazi/*/flavors/gruvbox.yazi
+harlequin = "gruvbox"
+ghostty   = "Gruvbox Dark"

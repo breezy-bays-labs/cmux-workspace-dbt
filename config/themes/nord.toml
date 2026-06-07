@@ -1,0 +1,8 @@
+# cide theme — Nord. `cide-theme nord`.
+[tool]
+helix     = "nord"
+btop      = "nord"               # bundled in btop's share dir
+bat       = "Nord"               # delta syntax-theme
+yazi      = "nord"               # cide-shipped flavor (hand-written): config/yazi/*/flavors/nord.yazi
+harlequin = "nord"
+ghostty   = "Nord"

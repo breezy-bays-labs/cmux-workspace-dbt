@@ -19,9 +19,15 @@ if [ -L "$self" ]; then self="$(readlink "$self")"; fi
 DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
 # shellcheck source=/dev/null
 . "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
 export XDG_CONFIG_HOME="$DBT_WS_XDG"
 
 DUCKDB_INIT="$DBT_WS_XDG/duckdb/cide-init.sql"
+
+# harlequin theme follows the active cide theme (config/themes/<active>.toml -> tool.harlequin).
+_active="$(cide_toml_get theme active)"; _active="${_active:-catppuccin-mocha}"
+HQ_THEME="$(cide_toml_file_get "$DBT_WS_HOME/config/themes/$_active.toml" tool harlequin)"; HQ_THEME="${HQ_THEME:-catppuccin-mocha}"
 
 # Read a key from the [database] table of cide.toml (empty if unset). Hand-rolled,
 # matching common.sh's minimal-parser philosophy; promote to common.sh if other
@@ -40,8 +46,8 @@ _cide_db_get() {  # <key>
 # --- file-arg path (yazi opener): open the clicked database file, adapter by extension.
 if [ "$#" -gt 0 ]; then
   case "$1" in
-    *.sqlite|*.sqlite3|*.db) exec harlequin -a sqlite "$@" ;;
-    *)                       exec harlequin -a duckdb -i "$DUCKDB_INIT" "$@" ;;
+    *.sqlite|*.sqlite3|*.db) exec harlequin --theme "$HQ_THEME" -a sqlite "$@" ;;
+    *)                       exec harlequin --theme "$HQ_THEME" -a duckdb -i "$DUCKDB_INIT" "$@" ;;
   esac
 fi
 
@@ -58,7 +64,7 @@ fi
 ADAPTER="${ADAPTER:-duckdb}"
 
 if [ "$ADAPTER" = "sqlite" ]; then
-  exec harlequin -a sqlite ${CONN:+"$CONN"}
+  exec harlequin --theme "$HQ_THEME" -a sqlite ${CONN:+"$CONN"}
 fi
 # duckdb (incl. in-memory when CONN is empty): apply the zero-egress init.
-exec harlequin -a duckdb -i "$DUCKDB_INIT" $RO ${CONN:+"$CONN"}
+exec harlequin --theme "$HQ_THEME" -a duckdb -i "$DUCKDB_INIT" $RO ${CONN:+"$CONN"}

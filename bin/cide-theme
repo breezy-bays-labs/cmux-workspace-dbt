@@ -1,0 +1,75 @@
+#!/bin/sh
+# cide-theme [name] — apply a cide theme across all tools + cmux/ghostty, or list/show.
+#
+# Themes live in config/themes/<name>.toml as per-tool NAME mappings. This command
+# name-swaps each tool's theme setting (no per-theme palette maintenance):
+#   helix      config/helix/config.toml      theme = "<helix>"
+#   btop       config/btop/btop.conf         color_theme = "<btop>"
+#   delta      config/gitconfig              syntax-theme = <bat>   (a bat theme name)
+#   yazi       config/yazi/*/theme.toml      [flavor] dark/light = "<yazi>"  (if flavor installed)
+#   harlequin  (dynamic)                      hq-wrap reads cide.toml [theme].active at launch
+#   ghostty    cmux + ~/.config/ghostty       `cmux themes set "<ghostty>"`
+# Tools using terminal ANSI colors (lazygit/tig/gh-dash) follow ghostty/cmux for free.
+# Open TUIs pick up the new theme on next launch; cmux/ghostty reload live.
+set -eu
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/common.sh"
+# shellcheck source=/dev/null
+. "$DBT_WS_HOME/lib/cide-editor.sh"
+
+THEMES_DIR="$DBT_WS_HOME/config/themes"
+
+_list() {
+  _active="$(cide_toml_get theme active)"
+  echo "active: ${_active:-<unset>}"
+  echo "available:"
+  for _f in "$THEMES_DIR"/*.toml; do [ -f "$_f" ] || continue; _n="$(basename "$_f" .toml)"; printf '  %s%s\n' "$_n" "$([ "$_n" = "$_active" ] && echo '  *')"; done
+}
+
+case "${1:-}" in
+  ""|-l|--list) _list; exit 0 ;;
+  -h|--help) printf 'cide-theme [name]    apply a theme across all tools + cmux/ghostty\ncide-theme --list    show active + available\n'; exit 0 ;;
+esac
+
+name="$1"
+file="$THEMES_DIR/$name.toml"
+[ -f "$file" ] || { echo "cide-theme: unknown theme '$name'" >&2; _list >&2; exit 1; }
+
+g() { cide_toml_file_get "$file" tool "$1"; }
+HELIX="$(g helix)"; BTOP="$(g btop)"; BAT="$(g bat)"; YAZI="$(g yazi)"; GHOSTTY="$(g ghostty)"
+YAZI_PKG="$(cide_toml_file_get "$file" install yazi_flavor)"
+
+# --- name-based config rewrites (BSD sed: -i '') -----------------------------
+[ -n "$HELIX" ] && sed -i '' -E "s/^theme = .*/theme = \"$HELIX\"/" "$DBT_WS_HOME/config/helix/config.toml"
+[ -n "$BTOP" ]  && sed -i '' -E "s/^color_theme = .*/color_theme = \"$BTOP\"/" "$DBT_WS_HOME/config/btop/btop.conf"
+[ -n "$BAT" ]   && sed -i '' -E "s|^([[:space:]]*)syntax-theme = .*|\\1syntax-theme = $BAT   # cide-theme managed (a bat theme name)|" "$DBT_WS_HOME/config/gitconfig"
+
+# --- yazi flavor (only if installed for that config dir; else tell how to add) ---
+if [ -n "$YAZI" ]; then
+  for d in cide cide-wide; do
+    _tf="$DBT_WS_HOME/config/yazi/$d/theme.toml"
+    if [ -d "$DBT_WS_HOME/config/yazi/$d/flavors/$YAZI.yazi" ]; then
+      sed -i '' -E "s/^(dark|light)([[:space:]]*)= .*/\\1\\2= \"$YAZI\"/" "$_tf"
+    else
+      echo "cide-theme: yazi flavor '$YAZI' not installed for $d — to enable:" >&2
+      echo "  YAZI_CONFIG_HOME=\"$DBT_WS_HOME/config/yazi/$d\" ya pkg add ${YAZI_PKG:-yazi-rs/flavors:$YAZI}" >&2
+    fi
+  done
+fi
+
+# --- ghostty + cmux (live) ----------------------------------------------------
+if [ -n "$GHOSTTY" ]; then
+  cmux themes set "$GHOSTTY" >/dev/null 2>&1 || echo "cide-theme: cmux themes set failed (cmux not running?)" >&2
+  [ -f "$HOME/.config/ghostty/config" ] && sed -i '' -E "s/^theme = .*/theme = $GHOSTTY/" "$HOME/.config/ghostty/config"
+fi
+
+# --- record active + reload ---------------------------------------------------
+sed -i '' -E "s/^active = .*/active = \"$name\"/" "$DBT_WS_HOME/cide.toml"
+cmux reload-config >/dev/null 2>&1 || true
+
+echo "cide-theme: applied '$name' (helix=$HELIX btop=$BTOP delta=$BAT yazi=$YAZI ghostty=$GHOSTTY)."
+echo "  cmux/ghostty reloaded live; relaunch helix/yazi/btop/lazygit to pick it up."

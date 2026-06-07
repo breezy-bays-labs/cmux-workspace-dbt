@@ -6,6 +6,8 @@ gui:
   nerdFontsVersion: "3"
   showFileTree: true
   showPanelJumps: true
+  # No theme block: lazygit uses terminal ANSI colors, so it follows the cide theme
+  # (ghostty/cmux) automatically — switched by `cide-theme`, no per-theme palette here.
 git:
   pagers:
     - colorArg: always

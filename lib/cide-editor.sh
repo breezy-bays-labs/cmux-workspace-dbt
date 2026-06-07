@@ -20,16 +20,17 @@ CIDE_REGISTRY="$CIDE_STATE/registry"             # lines: instance|role|ws|pane|
 # absolute path for a file arg (shared)
 _abs() { _d=$(dirname -- "$1"); _b=$(basename -- "$1"); (cd -- "$_d" 2>/dev/null && printf '%s/%s' "$(pwd)" "$_b") || printf '%s' "$1"; }
 
-# --- cide.toml reader (generic [section] key -> value; minimal, matches common.sh style)
-cide_toml_get() {  # <section> <key>
-  _f="$DBT_WS_HOME/cide.toml"; [ -f "$_f" ] || return 0
-  awk -v s="$1" -v k="$2" '
+# --- TOML reader (generic [section] key -> value; minimal, matches common.sh style)
+cide_toml_file_get() {  # <file> <section> <key>
+  [ -f "$1" ] || return 0
+  awk -v s="$2" -v k="$3" '
     /^[[:space:]]*\[/ { ins = ($0 ~ "^[[:space:]]*\\["s"\\][[:space:]]*$"); next }
     ins && $0 ~ "^[[:space:]]*"k"[[:space:]]*=" {
       sub("^[[:space:]]*"k"[[:space:]]*=[[:space:]]*",""); sub(/[[:space:]]*#.*$/,""); print; exit
     }
-  ' "$_f" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'\$/\\1/"
+  ' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'\$/\\1/"
 }
+cide_toml_get() { cide_toml_file_get "$DBT_WS_HOME/cide.toml" "$1" "$2"; }  # cide.toml convenience
 
 cide_ide_name() { _n="$(cide_toml_get ide name)"; if [ -n "$_n" ]; then printf '%s' "$_n"; else basename "$DBT_WS_HOME"; fi; }
 
