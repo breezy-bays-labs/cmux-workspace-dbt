@@ -35,7 +35,7 @@ _cide_landscape_json() {  # <include_agent: 1|0>
   _notifyhint='echo "↳ notifications pane — tracked: #25"'
   jq -nc --argjson agent "${1:-1}" --arg ah "$_agenthint" --arg nh "$_notifyhint" '
   {
-    direction:"vertical", split:0.82,
+    direction:"vertical", split:0.75,
     children:[
       { direction:"horizontal", split:0.5, children:[
           { pane:{ surfaces:
