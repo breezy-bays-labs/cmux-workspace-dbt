@@ -210,8 +210,10 @@ cide_current_space() {
 
 # Member workspace UUIDs (uppercased, one per line) of a space — THE SCOPE BOUNDARY:
 # cide features (jump, vault, …) operate only over members. Empty id => the DEFAULT
-# space: cwd==repo OR cide:instance=<name> tag (pre-spaces behavior). A named id => any
-# workspace whose cide:spaces=<csv> description token contains that id.
+# space: cwd==repo OR cide:instance=<name> tag, AND NOT carrying any cide:spaces= tag —
+# so the default is strictly the baseline IDE, disjoint from every named space (whose
+# workspaces also live at cwd==repo). A named id => any workspace whose cide:spaces=<csv>
+# token contains that id. Result: default ⟂ named spaces, and named spaces ⟂ each other.
 cide_member_workspaces() { cide_space_members "$(cide_current_space)"; }  # back-compat shim (cide-jump's caller)
 cide_space_members() {  # [space-id]
   _smid="${1:-}"
@@ -220,8 +222,9 @@ cide_space_members() {  # [space-id]
     cmux rpc workspace.list '{}' 2>/dev/null \
       | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" \
           '(.workspaces // .)[]
-             | select((.current_directory==$repo)
-                      or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
+             | select(((.current_directory==$repo)
+                       or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
+                      and (((.description // "") | test("(^|;)cide:spaces=")) | not))
              | .id' 2>/dev/null \
       | tr 'a-f' 'A-F' | sort -u
   else
