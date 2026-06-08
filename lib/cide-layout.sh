@@ -30,10 +30,14 @@ _cide_portrait_json() {
 # + editor are visible at once). "Lazy" tools (difft/cmux-diff) open to --help — they
 # act on a target, they don't auto-run. shell pane = a bare shell; notify is a labeled
 # placeholder until the PR-review/notifications work (#25) lands.
-_cide_landscape_json() {  # <include_agent: 1|0>
-  _agenthint='echo "↳ run cide-agent here to start the agent in this pane"'
+# $2 (optional) overrides the agent surface's command — `cide-space open` passes a
+# `claude --resume <checkpoint>` here to continue a captured conversation; `new` omits it
+# and the agent tab is a labeled hint shell (no auto-claude).
+_cide_landscape_json() {  # <include_agent: 1|0> [agent-cmd-override]
+  _agentcmd="${2:-}"
+  [ -n "$_agentcmd" ] || _agentcmd='echo "↳ run cide-agent here to start the agent in this pane"'
   _notifyhint='echo "↳ notifications pane — tracked: #25"'
-  jq -nc --argjson agent "${1:-1}" --arg ah "$_agenthint" --arg nh "$_notifyhint" '
+  jq -nc --argjson agent "${1:-1}" --arg ah "$_agentcmd" --arg nh "$_notifyhint" '
   {
     direction:"vertical", split:0.75,
     children:[
@@ -62,15 +66,17 @@ _cide_landscape_json() {  # <include_agent: 1|0>
 
 # Emit the window plan for a layout: one TSV line per window — role<TAB>orientation<TAB>layout-json.
 # jq -c keeps each json on a single line (no tabs/newlines), so the TSV is safe.
-cide_layout_plan() {  # <layout-name>
-  _lay="$1"
+# $2 (optional) overrides the agent surface's command (see _cide_landscape_json) — used by
+# `cide-space open` to relaunch the agent slot as a `claude --resume <checkpoint>`.
+cide_layout_plan() {  # <layout-name> [agent-cmd-override]
+  _lay="$1"; _agentcmd="${2:-}"
   _place="$(cide_toml_get agents placement)"; _place="${_place:-landscape}"
   case "$_place" in landscape|both) _agent=1 ;; *) _agent=0 ;; esac
   _t="$(printf '\t')"
   case "$_lay" in
     landscape-portrait)
       printf 'editor%sportrait%s%s\n'  "$_t" "$_t" "$(_cide_portrait_json)"
-      printf 'tools%slandscape%s%s\n'  "$_t" "$_t" "$(_cide_landscape_json "$_agent")"
+      printf 'tools%slandscape%s%s\n'  "$_t" "$_t" "$(_cide_landscape_json "$_agent" "$_agentcmd")"
       ;;
     single-portrait)
       printf 'editor%sportrait%s%s\n'  "$_t" "$_t" "$(_cide_portrait_json)"

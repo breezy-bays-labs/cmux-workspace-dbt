@@ -163,6 +163,18 @@ cide_regen_editor() {  # [file...]
 CIDE_AGENTS="${CIDE_AGENTS:-$CIDE_STATE/agents}"
 CIDE_AGENT_STORE="${CIDE_AGENT_STORE:-$HOME/.cmuxterm/claude-hook-sessions.json}"
 
+# Install cmux's claude agent hooks once (guarded by a marker), so cmux captures each
+# claude session (sessionId/checkpoint, surfaceId, transcriptPath). Idempotent + cheap;
+# shared by cide-agent (launch) and cide-space open (layout-launched --resume). Without
+# hooks cmux can't capture the session, so resume-on-next-open would have nothing to read.
+cide_ensure_claude_hooks() {
+  _cech_m="$CIDE_STATE/hooks-claude"
+  [ -f "$_cech_m" ] && return 0
+  mkdir -p "$CIDE_STATE"
+  cmux hooks setup --agent claude >/dev/null 2>&1 || true
+  : > "$_cech_m"
+}
+
 # All LIVE surface UUIDs (uppercased), one per line — used to split active vs dead.
 cide_live_uuids() {
   cmux tree --all --id-format uuids 2>/dev/null \

@@ -46,7 +46,9 @@ placement = "landscape"
 command   = "claude"
 args      = []
 name_flag = "--name"
-# resume_flag = "--resume"   # used by conversation-resume self-heal (follow-up)
+resume_flag = "--resume"   # `cide-space open` relaunches a closed space's agent with
+                           # `claude --name <label> --resume <checkpoint>` so the prior
+                           # conversation continues (checkpoint captured at close).
 
 # codex on the backburner (claude-only today); slot kept for its return:
 # [agents.codex]

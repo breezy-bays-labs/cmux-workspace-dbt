@@ -42,16 +42,6 @@ _since() {
   }'
 }
 
-# Ensure cmux's claude agent hooks are installed (once; guarded by a marker so we
-# don't shell out on every launch). Without hooks cmux can't capture the session.
-_ensure_hooks() {
-  _m="$CIDE_STATE/hooks-claude"
-  [ -f "$_m" ] && return 0
-  mkdir -p "$CIDE_STATE"
-  cmux hooks setup --agent claude >/dev/null 2>&1 || true
-  : > "$_m"
-}
-
 # --- new: launch the agent in the current surface, named + tracked -----------
 cmd_new() {
   _name="$(cide_ide_name)"
@@ -65,7 +55,7 @@ cmd_new() {
     _label="claude-$(( ${_n:-0} + 1 ))"
   fi
 
-  _ensure_hooks
+  cide_ensure_claude_hooks
 
   # Record the cide-managed agent surface (the durable checkpoint hydrates later via
   # the vault); rename the tab to match the session label.

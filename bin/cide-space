@@ -7,17 +7,25 @@
 #   cide-space [ls]            list spaces (status, members, last active); * = active
 #   cide-space new <name>      build a fresh space from the layout preset; make it active
 #   cide-space new <name> --dry  print the window plan + layout JSON without creating
+#   cide-space open <name|id>  REOPEN a closed space — rebuild its windows from the stored
+#                              layout AND resume any agent conversation captured at close
 #   cide-space use <name|id>   focus the space (and make it active); 'default' = repo
 #   cide-space current         show the active space
 #   cide-space close <name|id> close the space's workspaces; KEEP the record + history
 #   cide-space rm <name|id>    close + purge the record (confirm unless -f)
 #
-# Build: `new` resolves a window per layout role (reusing an existing same-orientation
-# window, else a fresh one — physical-monitor placement isn't CLI-controllable, so a new
-# window lands on the main monitor: drag once), then `cmux workspace create --layout`
-# instantiates that window's panes/surfaces. Each created workspace is stamped with a
-# cide:spaces=<id> description tag at birth, so the space resolves live (and after a
-# restart) without depending on volatile UUIDs.
+# Build (new/open share one executor, _instantiate): resolve a window per layout role
+# (reusing an existing same-orientation window, else a fresh one — physical-monitor
+# placement isn't CLI-controllable, so a new window lands on the main monitor: drag once),
+# then `cmux new-workspace --layout` instantiates that window's panes/surfaces. Each
+# created workspace is stamped with a cide:spaces=<id> description tag at birth, so the
+# space resolves live (and after a restart) without depending on volatile UUIDs.
+#
+# Agent conversation-resume (the self-heal prize): `close` snapshots each member
+# workspace's live claude session (checkpoint = the cmux store's sessionId) into
+# spaces/<id>/agents BEFORE closing; `open` reads it back and relaunches the agent slot as
+# `claude --name <label> --resume <checkpoint>` (falling back to a hint shell if the
+# transcript is gone), so reopening a space continues the conversation where it left off.
 set -eu
 
 self="$0"
@@ -36,6 +44,8 @@ cide-space — IDE spaces (fresh, self-contained containers built from the layou
   cide-space [ls]              list spaces (status, members, last active); * = active
   cide-space new <name>        build a fresh space from the layout; make it active
   cide-space new <name> --dry  print the window plan + layout JSON, create nothing
+  cide-space open <name|id>    reopen a closed space (rebuild + resume its agent)
+  cide-space open <name|id> --dry  print the reopen plan (incl. agent resume vs fallback)
   cide-space use <name|id>     focus the space (active); 'default' returns to repo scope
   cide-space current           show the active space
   cide-space close <name|id>   close the space's workspaces; keep the record + history
@@ -97,6 +107,108 @@ _ws_uuid() {  # <workspace-ref>
     | head -1 | tr 'a-f' 'A-F'
 }
 
+# Pretty-print a window plan (--dry): per-window role/orientation + per-pane surface names.
+_print_plan() {  # <plan-tsv>
+  printf '%s\n' "$1" | while IFS="$_t" read -r _role _orient _json; do
+    [ -n "$_role" ] || continue
+    printf '\n  window: role=%s  orientation=%s\n' "$_role" "$_orient"
+    printf '%s' "$_json" | jq -r '[.. | .surfaces? // empty | (map(.name) | join(", "))]
+      | to_entries[] | "    pane \(.key+1): \(.value)"' 2>/dev/null
+  done
+}
+
+# Compose the agent-slot launch command for `open` from the checkpoint captured at close
+# (spaces/<id>/agents = role|label|checkpoint|transcriptPath). Prints
+# "claude --name '<label>' --resume <checkpoint> [args...]" for cide_layout_plan's agent
+# override — or NOTHING (so the slot falls back to the hint shell) when there's no record
+# or the transcript is gone. v1 = one agent slot: the first restorable row wins.
+_resume_agent_cmd() {  # <space-id>
+  _raf="$CIDE_SPACES/$1/agents"
+  [ -s "$_raf" ] || return 0
+  while IFS='|' read -r _arole _alabel _ackpt _atx; do
+    [ -n "$_ackpt" ] || continue
+    if [ -n "$_atx" ] && [ ! -f "$_atx" ]; then continue; fi   # stale transcript -> hint shell
+    _rcmd="$(cide_toml_get agents.claude command)";    _rcmd="${_rcmd:-claude}"
+    _rnflag="$(cide_toml_get agents.claude name_flag)"; _rnflag="${_rnflag:---name}"
+    _rrflag="$(cide_toml_get agents.claude resume_flag)"; _rrflag="${_rrflag:---resume}"
+    _rargs=""                                                   # configured args (parity with cide-agent)
+    _raw="$(cide_toml_get agents.claude args)"; _inner="${_raw#[}"; _inner="${_inner%]}"
+    _OIFS=$IFS; IFS=','
+    for _a in $_inner; do
+      _a="$(printf '%s' "$_a" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//')"
+      [ -n "$_a" ] && _rargs="$_rargs $_a"
+    done
+    IFS=$_OIFS
+    printf "%s %s '%s' %s %s%s" "$_rcmd" "$_rnflag" "$_alabel" "$_rrflag" "$_ackpt" "$_rargs"
+    return 0
+  done < "$_raf"
+  return 0
+}
+
+# Snapshot any agent (claude) sessions living inside a space's member workspaces into
+# spaces/<id>/agents (role|label|checkpoint|transcriptPath) so `open` can --resume them.
+# Reads cmux's session store + the live tree (matches store.surfaceId ∈ a member
+# workspace's live surfaces); only restorable sessions are recorded. Overwrites the file
+# (latest close wins); leaves it untouched if nothing restorable is found. Call BEFORE
+# closing the workspaces (the sessions must still be live to read their surfaces).
+_capture_agents() {  # <space-id>
+  _caid="$1"; _cadir="$CIDE_SPACES/$_caid"
+  { [ -f "$CIDE_AGENT_STORE" ] && [ -s "$_cadir/members" ]; } || return 0
+  _tmp="$_cadir/agents.tmp"; : > "$_tmp"
+  while IFS='|' read -r _mrole _mws _mcwd; do
+    [ -n "$_mws" ] || continue
+    _surfs="$(cmux tree --workspace "$_mws" --id-format uuids 2>/dev/null \
+              | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+              | tr 'a-f' 'A-F' | sort -u)"
+    [ -n "$_surfs" ] || continue
+    jq -r '.sessions | to_entries[] | .value
+           | select((.isRestorable // false) == true)
+           | [ .surfaceId, .sessionId, (.transcriptPath // ""),
+               ( (.launchCommand.arguments // []) as $a
+                 | (($a | index("--name")) // ($a | index("-n"))) as $i
+                 | if $i then ($a[$i+1] // "") else "" end ) ] | @tsv' \
+        "$CIDE_AGENT_STORE" 2>/dev/null \
+      | while IFS="$_t" read -r _ssurf _sckpt _stx _slabel; do
+          [ -n "$_sckpt" ] || continue
+          printf '%s\n' "$_surfs" | grep -qiF "$_ssurf" || continue
+          _lbl="${_slabel:-$(cide_agent_label_of "$_ssurf")}"; _lbl="${_lbl:-claude}"
+          printf '%s|%s|%s|%s\n' "$_mrole" "$_lbl" "$_sckpt" "$_stx" >> "$_tmp"
+        done
+  done < "$_cadir/members"
+  if [ -s "$_tmp" ]; then mv "$_tmp" "$_cadir/agents"; else rm -f "$_tmp"; fi
+}
+
+# Build a space's cmux workspaces from its layout (shared by new + open). Rewrites
+# spaces/<id>/members (role|ws-uuid|cwd) and prints the window count on stdout. When the
+# space has a captured agent checkpoint (open path), the agent slot relaunches as a
+# claude --resume; otherwise it's a hint shell (new path). Each workspace is stamped
+# cide:spaces=<id>;role=<role> at birth.
+_instantiate() {  # <id> <name> <layout> <cwd>
+  _ins_id="$1"; _ins_name="$2"; _ins_layout="$3"; _ins_cwd="$4"
+  _ins_dir="$CIDE_SPACES/$_ins_id"
+  _ins_agentcmd="$(_resume_agent_cmd "$_ins_id")"
+  _ins_plan="$(cide_layout_plan "$_ins_layout" "$_ins_agentcmd")"
+  : > "$_ins_dir/members"
+
+  _first=1
+  printf '%s\n' "$_ins_plan" | while IFS="$_t" read -r _role _orient _json; do
+    [ -n "$_role" ] || continue
+    _wr="$(_resolve_window "$_orient")" || { echo "cide-space: could not get a $_orient window for role $_role" >&2; continue; }
+    _win="${_wr%%"$_t"*}"; _defws="${_wr#*"$_t"}"
+    _focus=false; [ "$_first" -eq 1 ] && _focus=true
+    _out="$(cmux new-workspace --window "$_win" --name "$_ins_name" \
+              --description "cide:spaces=$_ins_id;role=$_role" --cwd "$_ins_cwd" \
+              --layout "$_json" --focus "$_focus" 2>&1)" || { echo "cide-space: failed to create $_role workspace" >&2; continue; }
+    _wref="$(printf '%s' "$_out" | grep -oE 'workspace:[0-9]+' | head -1)"
+    [ -n "$_defws" ] && cmux close-workspace --workspace "$_defws" --window "$_win" >/dev/null 2>&1 || true
+    _wid="$(_ws_uuid "$_wref")"
+    printf '%s|%s|%s\n' "$_role" "${_wid:-$_wref}" "$_ins_cwd" >> "$_ins_dir/members"
+    _first=0
+  done
+
+  awk 'NF' "$_ins_dir/members" 2>/dev/null | wc -l | tr -d ' '
+}
+
 # --- new: build a fresh space from the layout preset --------------------------
 cmd_new() {
   _name=""; _dry=0
@@ -108,16 +220,10 @@ cmd_new() {
 
   _layout="$(cide_toml_get ide layout)"; _layout="${_layout:-landscape-portrait}"
   _cwd="$DBT_WS_HOME"
-  _plan="$(cide_layout_plan "$_layout")"
 
   if [ "$_dry" -eq 1 ]; then
     printf 'cide-space (DRY) — would build "%s" from layout "%s" (cwd %s):\n' "$_name" "$_layout" "$_cwd"
-    printf '%s\n' "$_plan" | while IFS="$_t" read -r _role _orient _json; do
-      [ -n "$_role" ] || continue
-      printf '\n  window: role=%s  orientation=%s\n' "$_role" "$_orient"
-      printf '%s' "$_json" | jq -r '[.. | .surfaces? // empty | (map(.name) | join(", "))]
-        | to_entries[] | "    pane \(.key+1): \(.value)"' 2>/dev/null
-    done
+    _print_plan "$(cide_layout_plan "$_layout")"
     return 0
   fi
 
@@ -129,30 +235,55 @@ cmd_new() {
   while [ -d "$CIDE_SPACES/$_id" ]; do _id="${_slugbase}-$(date +%s)-$$"; done
   _dir="$CIDE_SPACES/$_id"; mkdir -p "$_dir"
   printf '%s|%s|%s|%s|%s\n' "$_id" "$_name" open "$(date +%s)" "$_layout" > "$_dir/meta"
-  : > "$_dir/members"
 
-  _first=1
-  printf '%s\n' "$_plan" | while IFS="$_t" read -r _role _orient _json; do
-    [ -n "$_role" ] || continue
-    _wr="$(_resolve_window "$_orient")" || { echo "cide-space: could not get a $_orient window for role $_role" >&2; continue; }
-    _win="${_wr%%"$_t"*}"; _defws="${_wr#*"$_t"}"
-    _focus=false; [ "$_first" -eq 1 ] && _focus=true
-    _out="$(cmux new-workspace --window "$_win" --name "$_name" \
-              --description "cide:spaces=$_id;role=$_role" --cwd "$_cwd" \
-              --layout "$_json" --focus "$_focus" 2>&1)" || { echo "cide-space: failed to create $_role workspace" >&2; continue; }
-    _wref="$(printf '%s' "$_out" | grep -oE 'workspace:[0-9]+' | head -1)"
-    [ -n "$_defws" ] && cmux close-workspace --workspace "$_defws" --window "$_win" >/dev/null 2>&1 || true
-    _wid="$(_ws_uuid "$_wref")"
-    printf '%s|%s|%s\n' "$_role" "${_wid:-$_wref}" "$_cwd" >> "$_dir/members"
-    _first=0
-  done
-
-  _made="$(awk 'NF' "$_dir/members" 2>/dev/null | wc -l | tr -d ' ')"
+  _made="$(_instantiate "$_id" "$_name" "$_layout" "$_cwd")"
   printf '%s|%s|%s\n' "$(date +%s)" created "windows=$_made" >> "$_dir/history"
   mkdir -p "$CIDE_STATE"; printf '%s' "$_id" > "$CIDE_CURRENT_SPACE"
 
   printf 'cide-space: built "%s" (id %s) — %s window(s) from layout "%s"; now active.\n' "$_name" "$_id" "$_made" "$_layout"
   printf '  use "cide-space use default" to return to the repo scope; "cide-space rm %s" to remove it.\n' "$_name"
+}
+
+# --- open: REOPEN a closed space — rebuild windows + resume captured agent(s) --
+cmd_open() {
+  _arg=""; _dry=0
+  for a in "$@"; do
+    case "$a" in --dry) _dry=1 ;; -*) echo "cide-space: unknown option $a" >&2; exit 64 ;; *) [ -z "$_arg" ] && _arg="$a" ;; esac
+  done
+  [ -n "$_arg" ] || { echo "usage: cide-space open <name|id> [--dry]" >&2; exit 64; }
+  _id="$(_resolve "$_arg")"; [ -n "$_id" ] || { echo "cide-space: no space '$_arg' (try 'cide-space ls')." >&2; exit 1; }
+  _name="$(_field "$_id" 2)"
+  _layout="$(_field "$_id" 5)"; _layout="${_layout:-landscape-portrait}"
+  # spaces are repo-rooted; preserve whatever cwd the space was built with.
+  _cwd="$(cut -d'|' -f3 "$CIDE_SPACES/$_id/members" 2>/dev/null | awk 'NF' | head -1)"; _cwd="${_cwd:-$DBT_WS_HOME}"
+
+  if [ "$_dry" -eq 1 ]; then
+    printf 'cide-space (DRY) — would reopen "%s" (id %s) from layout "%s" (cwd %s):\n' "$_name" "$_id" "$_layout" "$_cwd"
+    _ac="$(_resume_agent_cmd "$_id")"
+    if [ -n "$_ac" ]; then printf '  agent slot: RESUME -> %s\n' "$_ac"
+    else printf '  agent slot: fresh hint shell (no restorable checkpoint captured)\n'; fi
+    _print_plan "$(cide_layout_plan "$_layout" "$_ac")"
+    return 0
+  fi
+
+  # already open? (live members exist) -> redirect to `use`, don't double-build.
+  _live=0
+  for _ws in $(cide_space_members "$_id"); do [ -n "$_ws" ] && _live=$(( _live + 1 )); done
+  if [ "$_live" -gt 0 ]; then
+    printf 'cide-space: "%s" is already open (%s live workspace(s)); focus it with "cide-space use %s".\n' "$_name" "$_live" "$_name"
+    return 0
+  fi
+
+  cide_ensure_claude_hooks   # so a layout-launched claude --resume is captured for NEXT close
+  _ac="$(_resume_agent_cmd "$_id")"   # non-empty iff a restorable checkpoint will be resumed
+  _made="$(_instantiate "$_id" "$_name" "$_layout" "$_cwd")"
+  _tmp="$CIDE_SPACES/$_id/meta.tmp"
+  awk -F'|' 'BEGIN{OFS="|"} {$3="open"; print}' "$CIDE_SPACES/$_id/meta" > "$_tmp" && mv "$_tmp" "$CIDE_SPACES/$_id/meta"
+  printf '%s|%s|%s\n' "$(date +%s)" opened "windows=$_made" >> "$CIDE_SPACES/$_id/history"
+  mkdir -p "$CIDE_STATE"; printf '%s' "$_id" > "$CIDE_CURRENT_SPACE"
+
+  printf 'cide-space: reopened "%s" (id %s) — %s window(s) from layout "%s"; now active.\n' "$_name" "$_id" "$_made" "$_layout"
+  if [ -n "$_ac" ]; then printf '  agent conversation resumed (claude --resume from the checkpoint captured at close).\n'; fi
 }
 
 # --- ls / current -------------------------------------------------------------
@@ -206,7 +337,7 @@ cmd_use() {
     _n=$(( _n + 1 ))
   done
   printf 'cide-space: active space -> %s (%s); focused %s live workspace(s).\n' "$(_field "$_id" 2)" "$_id" "$_n"
-  [ "$_n" -eq 0 ] && echo "  (no live workspaces — it may be closed; relaunch is Phase 2 #29.)" || true
+  [ "$_n" -eq 0 ] && printf '  (no live workspaces — it may be closed; reopen with "cide-space open %s".)\n' "$(_field "$_id" 2)" || true
 }
 
 # close the space's OWN live workspaces (by its cide:spaces tag), except the caller's
@@ -228,12 +359,15 @@ _close_members() {  # <space-id>
 cmd_close() {
   _arg="${1:-}"; [ -n "$_arg" ] || { echo "usage: cide-space close <name|id>" >&2; exit 64; }
   _id="$(_resolve "$_arg")"; [ -n "$_id" ] || { echo "cide-space: no space '$_arg'." >&2; exit 1; }
+  _capture_agents "$_id"   # snapshot live agent checkpoints BEFORE closing (so open can resume)
+  _ac="$(awk 'NF' "$CIDE_SPACES/$_id/agents" 2>/dev/null | wc -l | tr -d ' ')"
   _n="$(_close_members "$_id")"
   _tmp="$CIDE_SPACES/$_id/meta.tmp"
   awk -F'|' 'BEGIN{OFS="|"} {$3="closed"; print}' "$CIDE_SPACES/$_id/meta" > "$_tmp" && mv "$_tmp" "$CIDE_SPACES/$_id/meta"
-  printf '%s|%s|%s\n' "$(date +%s)" closed "closed=$_n" >> "$CIDE_SPACES/$_id/history"
+  printf '%s|%s|%s\n' "$(date +%s)" closed "closed=$_n;agents=${_ac:-0}" >> "$CIDE_SPACES/$_id/history"
   if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
   printf 'cide-space: closed "%s" — %s workspace(s) closed; record + history kept.\n' "$(_field "$_id" 2)" "$_n"
+  if [ "${_ac:-0}" -gt 0 ]; then printf '  captured %s agent checkpoint(s) — "cide-space open %s" resumes the conversation.\n' "$_ac" "$(_field "$_id" 2)"; fi
 }
 
 cmd_rm() {
@@ -265,6 +399,7 @@ sub="${1:-ls}"
 case "$sub" in
   -h|--help)   usage; exit 0 ;;
   new)         cmd_new "$@" ;;
+  open|reopen) cmd_open "$@" ;;
   ls|list)     cmd_ls "$@" ;;
   use|switch)  cmd_use "$@" ;;
   current)     cmd_current "$@" ;;
