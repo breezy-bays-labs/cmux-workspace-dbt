@@ -219,12 +219,17 @@ cide_space_members() {  # [space-id]
   _smid="${1:-}"
   if [ -z "$_smid" ]; then
     _nm="$(cide_ide_name)"
+    # Ids of spaces that actually exist on disk. A workspace whose cide:spaces tag points
+    # ONLY at removed spaces (stale cruft) is self-healed back into the default scope;
+    # only a tag naming a LIVE space excludes it. (No tag => default member, as before.)
+    _sp_json="$(if [ -d "$CIDE_SPACES" ]; then for _d in "$CIDE_SPACES"/*/; do [ -f "$_d/meta" ] && cut -d'|' -f1 "$_d/meta"; done; fi | jq -Rn '[inputs]')"
     cmux rpc workspace.list '{}' 2>/dev/null \
-      | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" \
+      | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" --argjson spaces "$_sp_json" \
           '(.workspaces // .)[]
              | select(((.current_directory==$repo)
                        or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
-                      and (((.description // "") | test("(^|;)cide:spaces=")) | not))
+                      and (((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
+                            | split(",") | map(select(. != "")) | map(. as $x | ($spaces | index($x))) | all(. == null))))
              | .id' 2>/dev/null \
       | tr 'a-f' 'A-F' | sort -u
   else
