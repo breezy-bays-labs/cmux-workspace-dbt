@@ -98,13 +98,20 @@ cmd_ls() {
   fi
   _now="$(date +%s)"
   _live="$(cide_live_uuids)"
+  _cs="$(cide_current_space)"
+  _member_cwds="$(cide_space_member_cwds "$_cs")"  # member cwds (DEAD scope; repo-wide)
+  # LIVE scope = every UUID inside the active space's member workspaces, read from the
+  # LIVE TREE (not the store's workspaceId, which goes stale when cmux recreates a
+  # workspace across restart). A live session's surface ∈ this set ⟺ it's in the space —
+  # which isolates same-repo spaces (their workspaces differ even though cwd matches).
+  _member_uuids="$(for _w in $(cide_space_members "$_cs"); do
+      cmux tree --workspace "$_w" --id-format uuids 2>/dev/null
+    done | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tr 'a-f' 'A-F' | sort -u)"
   _t="$(printf '\t')"
   _active=""; _dead=""
 
-  # Scope: sessions whose cwd is in the ACTIVE space (default space => the repo). Scoping
-  # by cwd (not live members) is what catches DEAD sessions whose workspace was already
-  # closed — those are gone from the live tree but their cwd still names the space.
-  _cwds_json="$(cide_space_member_cwds "$(cide_current_space)" | jq -Rn '[inputs] | unique')"
+  # DEAD sessions' workspaces are gone, so they can't be attributed to a space; they
+  # fall back to cwd scope = repo-wide history (honestly labeled, not isolated).
   while IFS="$_t" read -r _surf _life _upd _cwd _slabel; do
     [ -n "$_surf" ] || continue
     _clabel="$(cide_agent_label_of "$_surf")"
@@ -112,15 +119,16 @@ cmd_ls() {
     _ago="$(_since "$(( _now - ${_upd:-$_now} ))")"
     _row="$(printf '  %-18s %-9s %-6s %s' "$_label" "$_life" "$_ago" "$_cwd")"
     if printf '%s\n' "$_live" | grep -qiF "$_surf"; then
+      printf '%s\n' "$_member_uuids" | grep -qiF "$_surf" || continue  # LIVE: surface inside a member workspace
       _active="${_active}${_row}
 "
     else
+      printf '%s\n' "$_member_cwds" | grep -qxF "$_cwd" || continue    # DEAD: repo-wide by cwd
       _dead="${_dead}${_row}
 "
     fi
   done <<EOF
-$(jq -r --argjson cwds "$_cwds_json" '.sessions | to_entries[] | .value
-  | select(((.cwd // "") as $c | $cwds | index($c)) != null)
+$(jq -r '.sessions | to_entries[] | .value
   | [ .surfaceId,
       (.agentLifecycle // "?"),
       ((.updatedAt // 0) | floor | tostring),
@@ -131,13 +139,12 @@ $(jq -r --argjson cwds "$_cwds_json" '.sessions | to_entries[] | .value
     ] | @tsv' "$CIDE_AGENT_STORE" 2>/dev/null)
 EOF
 
-  _cs="$(cide_current_space)"
   if [ -n "$_cs" ]; then _scope="space: $(cut -d'|' -f2 "$CIDE_SPACES/$_cs/meta" 2>/dev/null)"; else _scope="instance: $(cide_ide_name)"; fi
   printf 'cide vault — agent sessions (%s)\n' "$_scope"
   printf '  %-18s %-9s %-6s %s\n' "LABEL" "STATE" "AGO" "CWD"
-  printf '\nACTIVE\n'
+  printf '\nACTIVE (this space)\n'
   if [ -n "$_active" ]; then printf '%s' "$_active"; else echo "  (none)"; fi
-  printf '\nDEAD (history)\n'
+  printf '\nDEAD (repo history — not space-isolated)\n'
   if [ -n "$_dead" ]; then printf '%s' "$_dead"; else echo "  (none)"; fi
 }
 
