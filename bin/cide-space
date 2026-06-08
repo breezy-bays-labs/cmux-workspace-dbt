@@ -147,34 +147,46 @@ _resume_agent_cmd() {  # <space-id>
 
 # Snapshot any agent (claude) sessions living inside a space's member workspaces into
 # spaces/<id>/agents (role|label|checkpoint|transcriptPath) so `open` can --resume them.
-# Reads cmux's session store + the live tree (matches store.surfaceId ∈ a member
-# workspace's live surfaces); only restorable sessions are recorded. Overwrites the file
-# (latest close wins); leaves it untouched if nothing restorable is found. Call BEFORE
-# closing the workspaces (the sessions must still be live to read their surfaces).
+# Members are resolved LIVE by the cide:spaces tag (workspace.list) — NOT the stored
+# members UUIDs, which die across a cmux restart; resolving by tag is what makes capture
+# survive the very restart this feature exists for. For each live member it reads the
+# session store and matches store.surfaceId ∈ that workspace's live surfaces; only
+# restorable sessions are recorded. Overwrites the file (latest close wins); leaves a
+# prior file untouched if nothing restorable is found. Call BEFORE closing the workspaces
+# (the sessions must still be live to read their surfaces).
 _capture_agents() {  # <space-id>
   _caid="$1"; _cadir="$CIDE_SPACES/$_caid"
-  { [ -f "$CIDE_AGENT_STORE" ] && [ -s "$_cadir/members" ]; } || return 0
+  [ -f "$CIDE_AGENT_STORE" ] || return 0
   _tmp="$_cadir/agents.tmp"; : > "$_tmp"
-  while IFS='|' read -r _mrole _mws _mcwd; do
-    [ -n "$_mws" ] || continue
-    _surfs="$(cmux tree --workspace "$_mws" --id-format uuids 2>/dev/null \
-              | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
-              | tr 'a-f' 'A-F' | sort -u)"
-    [ -n "$_surfs" ] || continue
-    jq -r '.sessions | to_entries[] | .value
-           | select((.isRestorable // false) == true)
-           | [ .surfaceId, .sessionId, (.transcriptPath // ""),
-               ( (.launchCommand.arguments // []) as $a
-                 | (($a | index("--name")) // ($a | index("-n"))) as $i
-                 | if $i then ($a[$i+1] // "") else "" end ) ] | @tsv' \
-        "$CIDE_AGENT_STORE" 2>/dev/null \
-      | while IFS="$_t" read -r _ssurf _sckpt _stx _slabel; do
-          [ -n "$_sckpt" ] || continue
-          printf '%s\n' "$_surfs" | grep -qiF "$_ssurf" || continue
-          _lbl="${_slabel:-$(cide_agent_label_of "$_ssurf")}"; _lbl="${_lbl:-claude}"
-          printf '%s|%s|%s|%s\n' "$_mrole" "$_lbl" "$_sckpt" "$_stx" >> "$_tmp"
-        done
-  done < "$_cadir/members"
+  # live members as UUID<TAB>role (role from the workspace's cide:spaces=<id>;role=<role>
+  # description tag, same scan idiom as cide_space_members; id upper-cased to match store).
+  cmux rpc workspace.list '{}' 2>/dev/null \
+    | jq -r --arg sid "$_caid" '(.workspaces // .)[]
+        | select(((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
+                  | split(",") | index($sid)) != null)
+        | [ (.id | ascii_upcase),
+            ((.description // "") | [scan("(^|;)role=([^;]*)")] | (.[-1] // [""]) | .[-1]) ] | @tsv' \
+        2>/dev/null \
+    | while IFS="$_t" read -r _mws _mrole; do
+        [ -n "$_mws" ] || continue
+        _surfs="$(cmux tree --workspace "$_mws" --id-format uuids 2>/dev/null \
+                  | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+                  | tr 'a-f' 'A-F' | sort -u)"
+        [ -n "$_surfs" ] || continue
+        jq -r '.sessions | to_entries[] | .value
+               | select((.isRestorable // false) == true)
+               | [ .surfaceId, .sessionId, (.transcriptPath // ""),
+                   ( (.launchCommand.arguments // []) as $a
+                     | (($a | index("--name")) // ($a | index("-n"))) as $i
+                     | if $i then ($a[$i+1] // "") else "" end ) ] | @tsv' \
+            "$CIDE_AGENT_STORE" 2>/dev/null \
+          | while IFS="$_t" read -r _ssurf _sckpt _stx _slabel; do
+              [ -n "$_sckpt" ] || continue
+              printf '%s\n' "$_surfs" | grep -qiF "$_ssurf" || continue
+              _lbl="${_slabel:-$(cide_agent_label_of "$_ssurf")}"; _lbl="${_lbl:-claude}"
+              printf '%s|%s|%s|%s\n' "${_mrole:-agent}" "$_lbl" "$_sckpt" "$_stx" >> "$_tmp"
+            done
+      done
   if [ -s "$_tmp" ]; then mv "$_tmp" "$_cadir/agents"; else rm -f "$_tmp"; fi
 }
 
@@ -236,6 +248,7 @@ cmd_new() {
   _dir="$CIDE_SPACES/$_id"; mkdir -p "$_dir"
   printf '%s|%s|%s|%s|%s\n' "$_id" "$_name" open "$(date +%s)" "$_layout" > "$_dir/meta"
 
+  cide_ensure_claude_hooks   # ready capture from birth, even if the user types bare `claude`
   _made="$(_instantiate "$_id" "$_name" "$_layout" "$_cwd")"
   printf '%s|%s|%s\n' "$(date +%s)" created "windows=$_made" >> "$_dir/history"
   mkdir -p "$CIDE_STATE"; printf '%s' "$_id" > "$CIDE_CURRENT_SPACE"
