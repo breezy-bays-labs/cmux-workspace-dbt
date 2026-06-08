@@ -31,7 +31,7 @@ DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
 # label (or the most-recently-active agent), then focus its window/workspace/tab.
 agent_jump() {  # [label]
   _want="${1:-}"; _live="$(cide_live_uuids)"; _members="$(cide_member_workspaces)"
-  _t="$(printf '\t')"; _bs=""; _bw=""; _bu=-1
+  _t="$(printf '\t')"; _bs=""; _bw=""; _bu=-1; _blabel=""
   while IFS="$_t" read -r _surf _ws _upd _slabel; do
     [ -n "$_surf" ] || continue
     printf '%s\n' "$_live" | grep -qiF "$_surf" || continue   # live surfaces only
@@ -39,9 +39,9 @@ agent_jump() {  # [label]
     _clabel="$(cide_agent_label_of "$_surf")"; _lab="${_clabel:-$_slabel}"
     _u="${_upd:-0}"
     if [ -n "$_want" ]; then
-      if [ "$_lab" = "$_want" ]; then _bs="$_surf"; _bw="$_ws"; break; fi
+      if [ "$_lab" = "$_want" ]; then _bs="$_surf"; _bw="$_ws"; _blabel="$_lab"; break; fi
     else
-      if [ "$_u" -gt "$_bu" ] 2>/dev/null; then _bu="$_u"; _bs="$_surf"; _bw="$_ws"; fi
+      if [ "$_u" -gt "$_bu" ] 2>/dev/null; then _bu="$_u"; _bs="$_surf"; _bw="$_ws"; _blabel="$_lab"; fi
     fi
   done <<EOF
 $(jq -r '.sessions | to_entries[] | .value |
@@ -49,18 +49,26 @@ $(jq -r '.sessions | to_entries[] | .value |
     ( (.launchCommand.arguments // []) as $a | (($a|index("--name")) // ($a|index("-n"))) as $i | if $i then ($a[$i+1] // "") else "" end )
   ] | @tsv' "${CIDE_AGENT_STORE:-$HOME/.cmuxterm/claude-hook-sessions.json}" 2>/dev/null)
 EOF
-  [ -n "$_bs" ] || { echo "cide-jump: no live agent${_want:+ \"$_want\"} found — launch one with 'cide-agent'." >&2; exit 1; }
+  [ -n "$_bs" ] || { echo "cide-jump: no live agent${_want:+ \"$_want\"} in scope — launch one with 'cide-agent'." >&2; exit 1; }
+  _nm_disp="${_blabel:-$_bs}"
   _twin="$(cide_ws_window "$_bw" 2>/dev/null || true)"
-  if [ -n "$dry" ]; then echo "cide-jump: -> agent${_want:+ $_want}  win=${_twin:-?} ws=$_bw surface=$_bs"; exit 0; fi
+  if [ -n "$dry" ]; then echo "cide-jump: -> agent $_nm_disp  win=${_twin:-?} ws=$_bw surface=$_bs"; exit 0; fi
+  # If we're already ON the agent's surface, focusing is a silent no-op — say so instead
+  # (this is what made a same-surface 'jump' look like it did nothing).
+  _cur_sf="$(cide_cur_surface 2>/dev/null || true)"
+  if [ -n "$_cur_sf" ] && [ "$(printf '%s' "$_bs" | tr 'a-f' 'A-F')" = "$_cur_sf" ]; then
+    echo "cide-jump: already on agent $_nm_disp ($_bs)."
+    exit 0
+  fi
   [ -n "$_twin" ] && cmux focus-window --window "$_twin" >/dev/null 2>&1 || true
   cmux select-workspace --workspace "$_bw" >/dev/null 2>&1 || true
   # focus the agent's surface (tab) — focus-panel selects a surface within its pane,
   # works same-pane AND cross-window; UUIDs resolve globally.
   if cmux focus-panel --panel "$_bs" --workspace "$_bw" >/dev/null 2>&1; then
-    echo "cide-jump -> agent${_want:+ $_want} ($_bs)"
+    echo "cide-jump -> agent $_nm_disp ($_bs)"
     exit 0
   fi
-  echo "cide-jump: resolved agent${_want:+ $_want} ($_bs) but focus failed" >&2
+  echo "cide-jump: resolved agent $_nm_disp ($_bs) but focus failed" >&2
   exit 1
 }
 

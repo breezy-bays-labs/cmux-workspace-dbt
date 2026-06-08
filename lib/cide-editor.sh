@@ -184,19 +184,72 @@ cide_agent_label_of() {  # <surface-uuid>
   grep -iF "|$1|" "$CIDE_AGENTS" 2>/dev/null | tail -1 | awk -F'|' '{print $2}'
 }
 
-# --- instance scope boundary -------------------------------------------------
-# Member workspace UUIDs (uppercased) of THIS cide instance, one per line. A workspace
-# is a member if its cwd is the instance repo (DBT_WS_HOME) OR its description carries
-# the cide:instance=<name> tag (explicit coupling, possibly cross-dir/cross-window).
-# THIS IS THE SCOPE: cide IDE features (vault, jump, …) operate only over members;
-# agent sessions in unrelated workspaces (other repos) are out of scope.
-cide_member_workspaces() {
-  _nm="$(cide_ide_name)"
-  cmux rpc workspace.list '{}' 2>/dev/null \
-    | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" \
-        '(.workspaces // .)[]
-           | select((.current_directory==$repo)
-                    or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
-           | .id' 2>/dev/null \
-    | tr 'a-f' 'A-F' | sort -u
+# --- IDE spaces: store + active-space scoping --------------------------------
+# An IDE *space* is a named, lifecycle-managed container of cmux workspaces that
+# cide-space CREATES FRESH from a layout preset (#21) — each space owns its own
+# workspaces (disjoint by construction; no overlap with the live IDE). The repo-
+# derived instance is the implicit DEFAULT space (empty id), byte-for-byte the
+# pre-spaces behavior. cide-space records the store as source of truth, and stamps
+# each created workspace's description with a cide:spaces=<id> tag at birth so live
+# members resolve without stable UUIDs (refs/UUIDs die across restart).
+#   $CIDE_SPACES/<id>/meta     id|name|status|created|layout
+#   $CIDE_SPACES/<id>/members  role|ws-uuid|cwd   (the workspaces this space created)
+#   $CIDE_SPACES/<id>/history  epoch|event|detail
+#   $CIDE_CURRENT_SPACE        the global active-space marker (empty => default)
+CIDE_SPACES="${CIDE_SPACES:-$CIDE_STATE/spaces}"
+CIDE_CURRENT_SPACE="${CIDE_CURRENT_SPACE:-$CIDE_STATE/current_space}"
+
+# The active space id, or empty for the default (repo) space. A marker pointing at a
+# space whose record is gone self-heals to default. Always exits 0 (safe under set -e).
+cide_current_space() {
+  _csid=""
+  [ -f "$CIDE_CURRENT_SPACE" ] && _csid="$(cat "$CIDE_CURRENT_SPACE" 2>/dev/null || true)"
+  if [ -n "$_csid" ] && [ -f "$CIDE_SPACES/$_csid/meta" ]; then printf '%s' "$_csid"; fi
+  return 0
+}
+
+# Member workspace UUIDs (uppercased, one per line) of a space — THE SCOPE BOUNDARY:
+# cide features (jump, vault, …) operate only over members. Empty id => the DEFAULT
+# space: cwd==repo OR cide:instance=<name> tag, AND NOT carrying any cide:spaces= tag —
+# so the default is strictly the baseline IDE, disjoint from every named space (whose
+# workspaces also live at cwd==repo). A named id => any workspace whose cide:spaces=<csv>
+# token contains that id. Result: default ⟂ named spaces, and named spaces ⟂ each other.
+cide_member_workspaces() { cide_space_members "$(cide_current_space)"; }  # back-compat shim (cide-jump's caller)
+cide_space_members() {  # [space-id]
+  _smid="${1:-}"
+  if [ -z "$_smid" ]; then
+    _nm="$(cide_ide_name)"
+    # Ids of spaces that actually exist on disk. A workspace whose cide:spaces tag points
+    # ONLY at removed spaces (stale cruft) is self-healed back into the default scope;
+    # only a tag naming a LIVE space excludes it. (No tag => default member, as before.)
+    _sp_json="$(if [ -d "$CIDE_SPACES" ]; then for _d in "$CIDE_SPACES"/*/; do [ -f "$_d/meta" ] && cut -d'|' -f1 "$_d/meta"; done; fi | jq -Rn '[inputs]')"
+    cmux rpc workspace.list '{}' 2>/dev/null \
+      | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" --argjson spaces "$_sp_json" \
+          '(.workspaces // .)[]
+             | select(((.current_directory==$repo)
+                       or ((.description // "") | test("cide:instance=" + $nm + "(;|$)")))
+                      and (((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
+                            | split(",") | map(select(. != "")) | map(. as $x | ($spaces | index($x))) | all(. == null))))
+             | .id' 2>/dev/null \
+      | tr 'a-f' 'A-F' | sort -u
+  else
+    cmux rpc workspace.list '{}' 2>/dev/null \
+      | jq -r --arg sid "$_smid" \
+          '(.workspaces // .)[]
+             | select(((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
+                       | split(",") | index($sid)) != null)
+             | .id' 2>/dev/null \
+      | tr 'a-f' 'A-F' | sort -u
+  fi
+}
+
+# Distinct cwds in scope for a space (vault scoping — catches DEAD sessions by cwd).
+# Empty id => the repo (pre-spaces behavior). Named id => unique member cwds.
+cide_space_member_cwds() {  # [space-id]
+  _scid="${1:-}"
+  if [ -z "$_scid" ] || [ ! -s "$CIDE_SPACES/$_scid/members" ]; then
+    printf '%s\n' "$DBT_WS_HOME"
+  else
+    cut -d'|' -f3 "$CIDE_SPACES/$_scid/members" | awk 'NF' | sort -u
+  fi
 }

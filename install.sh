@@ -30,7 +30,7 @@ common="cwd cwd-focus cwd-route hx-wrap yazi-wrap git-glance git-glance-render"
 # cide IDE command family (editor/explorer/theme/agent surfaces) — no data-access
 # boundary, so linked on every profile. (btop-wrap/hq-wrap/stgrev remain unmanaged
 # here for now — pre-existing; hq-wrap's warehouse-boundary placement is a separate call.)
-cide="cide-open cide-jump cide-md-open cide-regen cide-set-editor cide-set-role cide-theme cide-yazi cide-agent"
+cide="cide-open cide-jump cide-md-open cide-regen cide-set-editor cide-set-role cide-theme cide-yazi cide-agent cide-space"
 stow_only="hq-preview"   # warehouse-query surface; stow profile only (structural)
 
 link() { ln -sfn "$here/bin/$1" "$target/$1"; echo "  linked $1"; }

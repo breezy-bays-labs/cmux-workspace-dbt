@@ -15,6 +15,13 @@ name              = "cide-dbt"
 layout            = "landscape-portrait"
 on_missing_window = "reuse"
 
+# This [ide] block is the implicit DEFAULT space (your repo baseline). `cide-space new
+# <name>` BUILDS A FRESH space from this `layout` preset — new windows/panes/surfaces,
+# self-contained (close/rm only ever touch that named space). `cide-space ls|use|current|
+# close|rm` manage them; `cide-space new <name> --dry` prints the window plan first. The
+# landscape-portrait preset = portrait artifact (helix) + landscape tools (yazi+agent /
+# tig·lazygit·gh-dash·difft·cmux-diff / shell / just·notify). See lib/cide-layout.sh.
+
 # ── Agents ───────────────────────────────────────────────────────────────────
 # AI agent surfaces are first-class in cide, composed over cmux's native agent
 # machinery (cmux hooks capture each session; the launch label rides along so the
