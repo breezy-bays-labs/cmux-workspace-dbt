@@ -1,0 +1,162 @@
+#!/bin/sh
+# cide-place — monitor-aware window placement for cide (macOS-native; no aerospace/yabai).
+# Lists physical displays (human name / UUID / resolution / orientation) and moves a cmux
+# window onto a chosen monitor. Pure Apple: a small Swift helper (lib/cide-place.swift)
+# using CoreGraphics for display geometry + the Accessibility API for the window move.
+# Requires a one-time Accessibility grant to cmux/Ghostty (NOT `swift`). Placement is
+# best-effort: callers ignore failures so it never blocks the IDE.
+#
+#   cide-place [ls]                       list displays (name / UUID / resolution / orientation)
+#   cide-place move-window --to <monitor>     move the whole cmux WINDOW onto <monitor>  (alias: move)
+#   cide-place move-workspace --to <monitor>  move ONE workspace (a tab-group) onto <monitor>
+#   cide-place move-ide --to <monitor>        move the active space's workspaces that are in
+#                                             THIS window (a subset — not other windows) onto <monitor>
+#   <monitor> = macOS name (case-insensitive) | UUID | portrait | landscape | index
+#
+# Three granularities (move window ⊃ move-ide ⊃ move-workspace): the window form relocates
+# everything in the window incl. non-IDE tabs; move-ide extracts just this window's IDE
+# workspaces into a fresh window on the monitor; move-workspace extracts a single workspace.
+set -eu
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+SWIFT_HELPER="$DBT_WS_HOME/lib/cide-place.swift"
+_t="$(printf '\t')"
+
+usage() {
+  cat <<'EOF'
+cide-place — monitor-aware window placement (macOS)
+  cide-place [ls]                            list displays (name / UUID / resolution / orientation)
+  cide-place move-window --to <monitor> [--window <ref>]
+                                             move the whole cmux WINDOW onto <monitor>  (alias: move)
+  cide-place move-workspace --to <monitor> [--workspace <ref>]
+                                             move ONE workspace onto <monitor> (new window there)
+  cide-place move-ide --to <monitor>         move the active space's workspaces in THIS window
+                                             onto <monitor> (subset of members — not other windows)
+  <monitor> = macOS name (case-insensitive) | UUID | portrait | landscape | index
+  -h, --help                                 show this help
+EOF
+}
+
+command -v swift >/dev/null 2>&1 || { echo "cide-place: 'swift' not found — install Xcode Command Line Tools (xcode-select --install)." >&2; exit 127; }
+[ -f "$SWIFT_HELPER" ] || { echo "cide-place: helper missing: $SWIFT_HELPER" >&2; exit 1; }
+
+# Place a cmux window onto a monitor: AeroSpace-aware (it would re-tile a raw AX move),
+# AX fallback when no WM is active. <window-ref-or-id> empty => acts on the focused window.
+_place_window() {  # <window-ref-or-id> <monitor-ref>
+  _pw_win="$1"; _pw_to="$2"
+  _pw_res="$(swift "$SWIFT_HELPER" resolve "$_pw_to" 2>/dev/null)" || { echo "cide-place: no display matched '$_pw_to' (try 'cide-place ls')." >&2; return 3; }
+  _pw_name="${_pw_res%%"$_t"*}"; _pw_uuid="${_pw_res#*"$_t"}"
+  [ -n "$_pw_win" ] && cmux focus-window --window "$_pw_win" >/dev/null 2>&1 || true
+  if pgrep -x AeroSpace >/dev/null 2>&1; then
+    # AeroSpace owns layout and would re-tile a raw AX move — cooperate via its own CLI.
+    if aerospace move-node-to-monitor "$_pw_name" 2>/dev/null; then
+      echo "cide-place: → $_pw_name (via AeroSpace)"
+    else
+      echo "cide-place: AeroSpace move to '$_pw_name' failed." >&2; return 5
+    fi
+  else
+    swift "$SWIFT_HELPER" move "$_pw_uuid"   # no WM: raw Accessibility move
+  fi
+}
+
+# A field of the CALLER's context (the window/workspace the command was invoked in).
+_caller() { cmux identify --json --id-format both 2>/dev/null | jq -r ".caller.$1 // empty" 2>/dev/null; }
+
+# Create a fresh window, move the given workspaces into it, drop its default workspace,
+# and print the new window ref. This is how a workspace/IDE gets onto another monitor:
+# cmux workspaces live inside (macOS) windows, so they need a window on the target screen.
+_new_window_into() {  # <ws-ref-or-id>...
+  _nwo="$(cmux new-window 2>&1)" || { echo "cide-place: could not create a window" >&2; return 1; }
+  # `cmux new-window` prints `OK <uuid>` — take the token after "OK " (uuid or ref).
+  _nw="$(printf '%s' "$_nwo" | sed -n 's/^OK //p' | tr -d '[:space:]')"
+  [ -n "$_nw" ] || { echo "cide-place: could not parse the new window handle from: $_nwo" >&2; return 1; }
+  _nwdef="$(cmux tree --window "$_nw" 2>/dev/null | grep -oE 'workspace:[0-9]+' | head -1)"
+  for _w in "$@"; do
+    [ -n "$_w" ] || continue
+    cmux move-workspace-to-window --workspace "$_w" --window "$_nw" >/dev/null 2>&1 || echo "cide-place: warning — could not move workspace $_w" >&2
+  done
+  [ -n "$_nwdef" ] && cmux workspace close "$_nwdef" >/dev/null 2>&1 || true
+  printf '%s' "$_nw"
+}
+
+cmd="${1:-ls}"
+[ "$#" -gt 0 ] && shift || true
+case "$cmd" in
+  -h|--help) usage; exit 0 ;;
+  ls|list)
+    printf '%-22s %-38s %-11s %-11s %s\n' "NAME" "UUID" "RESOLUTION" "ORIENTATION" "ORIGIN"
+    swift "$SWIFT_HELPER" list 2>/dev/null | while IFS="$_t" read -r _n _u _r _o _g; do
+      printf '%-22s %-38s %-11s %-11s %s\n' "$_n" "$_u" "$_r" "$_o" "$_g"
+    done
+    ;;
+  move-window|move)
+    _to=""; _win=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -h|--help)  usage; exit 0 ;;
+        --to)       shift; _to="${1:-}" ;;
+        --to=*)     _to="${1#--to=}" ;;
+        --window)   shift; _win="${1:-}" ;;
+        --window=*) _win="${1#--window=}" ;;
+        *) echo "cide-place: unknown arg '$1'" >&2; exit 64 ;;
+      esac
+      shift || true
+    done
+    [ -n "$_to" ] || { echo "usage: cide-place move-window --to <monitor> [--window <ref>]" >&2; exit 64; }
+    _place_window "$_win" "$_to"
+    ;;
+  move-workspace)
+    _to=""; _ws=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -h|--help)     usage; exit 0 ;;
+        --to)          shift; _to="${1:-}" ;;
+        --to=*)        _to="${1#--to=}" ;;
+        --workspace)   shift; _ws="${1:-}" ;;
+        --workspace=*) _ws="${1#--workspace=}" ;;
+        *) echo "cide-place: unknown arg '$1'" >&2; exit 64 ;;
+      esac
+      shift || true
+    done
+    [ -n "$_to" ] || { echo "usage: cide-place move-workspace --to <monitor> [--workspace <ref>]" >&2; exit 64; }
+    _ws="${_ws:-$(_caller workspace_id)}"
+    [ -n "$_ws" ] || { echo "cide-place: could not determine the current workspace." >&2; exit 1; }
+    _nw="$(_new_window_into "$_ws")" || exit 1
+    _place_window "$_nw" "$_to"
+    ;;
+  move-ide)
+    _to=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -h|--help)  usage; exit 0 ;;
+        --to)       shift; _to="${1:-}" ;;
+        --to=*)     _to="${1#--to=}" ;;
+        *) echo "cide-place: unknown arg '$1'" >&2; exit 64 ;;
+      esac
+      shift || true
+    done
+    [ -n "$_to" ] || { echo "usage: cide-place move-ide --to <monitor>" >&2; exit 64; }
+    _cwin="$(_caller window_id)"
+    [ -n "$_cwin" ] || { echo "cide-place: could not determine the current window." >&2; exit 1; }
+    # The cide IDE workspaces in THIS window = workspaces in the caller's window whose
+    # description carries a cide tag (cide:spaces=<space> or cide:instance=<name>). This is
+    # the subset the user means — auto-detected from the window itself, NOT dependent on
+    # which space is "active", and NOT the space's workspaces in OTHER windows.
+    _tree="$(cmux tree --window "$_cwin" --id-format both --json 2>/dev/null)"
+    _winws="$(printf '%s' "$_tree" | jq -r '[.. | objects | select(has("panes") and has("id"))][] | .id' 2>/dev/null | tr 'a-f' 'A-F' | awk 'NF' | sort -u)"
+    _targets="$(printf '%s' "$_tree" | jq -r '[.. | objects | select(has("panes") and has("id")) | select((.description // "") | test("cide:(spaces|instance)="))][] | .id' 2>/dev/null | tr 'a-f' 'A-F' | awk 'NF' | sort -u)"
+    [ -n "$_targets" ] || { echo "cide-place: no cide IDE workspaces in this window to move." >&2; exit 1; }
+    _nt="$(printf '%s\n' "$_targets" | wc -l | tr -d ' ')"
+    _nwins="$(printf '%s\n' "$_winws" | wc -l | tr -d ' ')"
+    if [ "$_nt" = "$_nwins" ]; then
+      _place_window "$_cwin" "$_to"          # whole window is cide IDE → just move it (no empty leftover)
+    else
+      # shellcheck disable=SC2086
+      _nw="$(_new_window_into $_targets)" || exit 1
+      _place_window "$_nw" "$_to"
+    fi
+    ;;
+  *) echo "cide-place: unknown command '$cmd'" >&2; usage >&2; exit 64 ;;
+esac

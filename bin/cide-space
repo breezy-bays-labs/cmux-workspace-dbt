@@ -94,7 +94,9 @@ _resolve_window() {  # <orientation>
   [ "$_omw" = reuse ] && _w="$(cide_find_window "$1" 2>/dev/null || true)"
   if [ -n "$_w" ]; then printf '%s%s' "$_w" "$_t"; return 0; fi
   _o="$(cmux new-window 2>&1)" || return 1
-  _w="$(printf '%s' "$_o" | grep -oE 'window:[0-9]+' | head -1)"
+  # `cmux new-window` prints `OK <uuid>` (NOT `window:N`) — take the token after "OK "
+  # (works for a uuid or a ref, and ignores any deprecation-notice lines).
+  _w="$(printf '%s' "$_o" | sed -n 's/^OK //p' | tr -d '[:space:]')"
   [ -n "$_w" ] || return 1
   _defws="$(cmux tree --window "$_w" 2>/dev/null | grep -oE 'workspace:[0-9]+' | head -1)"
   printf '%s%s%s' "$_w" "$_t" "${_defws:-}"
@@ -147,9 +149,10 @@ _resume_agent_cmd() {  # <space-id>
 
 # Snapshot any agent (claude) sessions living inside a space's member workspaces into
 # spaces/<id>/agents (role|label|checkpoint|transcriptPath) so `open` can --resume them.
-# Members are resolved LIVE by the cide:spaces tag (workspace.list) — NOT the stored
-# members UUIDs, which die across a cmux restart; resolving by tag is what makes capture
-# survive the very restart this feature exists for. For each live member it reads the
+# Members are resolved LIVE by the cide:spaces tag via `cmux tree --all` (GLOBAL — NOT the
+# stored members UUIDs, which die across a cmux restart, and NOT `workspace.list`, which is
+# focused-window only). Resolving by tag globally is what makes capture survive both a
+# restart AND closing a multi-window space from another window. For each live member it reads the
 # session store and matches store.surfaceId ∈ that workspace's live surfaces; only
 # restorable sessions are recorded. Overwrites the file (latest close wins); leaves a
 # prior file untouched if nothing restorable is found. Call BEFORE closing the workspaces
@@ -158,10 +161,12 @@ _capture_agents() {  # <space-id>
   _caid="$1"; _cadir="$CIDE_SPACES/$_caid"
   [ -f "$CIDE_AGENT_STORE" ] || return 0
   _tmp="$_cadir/agents.tmp"; : > "$_tmp"
-  # live members as UUID<TAB>role (role from the workspace's cide:spaces=<id>;role=<role>
-  # description tag, same scan idiom as cide_space_members; id upper-cased to match store).
-  cmux rpc workspace.list '{}' 2>/dev/null \
-    | jq -r --arg sid "$_caid" '(.workspaces // .)[]
+  # live members as UUID<TAB>role — resolved GLOBALLY via `cmux tree --all` (workspace.list
+  # is focused-window only and would miss a member in another window, e.g. the agent in the
+  # tools window when closing from the editor window). Anchor on workspace nodes
+  # (panes+description+id); role from the cide:spaces=<id>;role=<role> tag; id upper-cased.
+  cmux tree --all --id-format both --json 2>/dev/null \
+    | jq -r --arg sid "$_caid" '[.. | objects | select(has("panes") and has("description") and has("id"))][]
         | select(((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
                   | split(",") | index($sid)) != null)
         | [ (.id | ascii_upcase),
@@ -210,7 +215,7 @@ _instantiate() {  # <id> <name> <layout> <cwd>
     _focus=false; [ "$_first" -eq 1 ] && _focus=true
     _out="$(cmux new-workspace --window "$_win" --name "$_ins_name" \
               --description "cide:spaces=$_ins_id;role=$_role" --cwd "$_ins_cwd" \
-              --layout "$_json" --focus "$_focus" 2>&1)" || { echo "cide-space: failed to create $_role workspace" >&2; continue; }
+              --layout "$_json" --focus "$_focus" 2>&1)" || { printf 'cide-space: failed to create %s workspace (window %s):\n%s\n' "$_role" "$_win" "$_out" >&2; continue; }
     _wref="$(printf '%s' "$_out" | grep -oE 'workspace:[0-9]+' | head -1)"
     [ -n "$_defws" ] && cmux close-workspace --workspace "$_defws" --window "$_win" >/dev/null 2>&1 || true
     _wid="$(_ws_uuid "$_wref")"
@@ -353,20 +358,32 @@ cmd_use() {
   [ "$_n" -eq 0 ] && printf '  (no live workspaces — it may be closed; reopen with "cide-space open %s".)\n' "$(_field "$_id" 2)" || true
 }
 
-# close the space's OWN live workspaces (by its cide:spaces tag), except the caller's
-# own (closing the terminal you're in would kill this command). Prints the count.
+# Close the space's OWN live workspaces (by its cide:spaces tag), EXCEPT the caller's own
+# — closing the terminal you're in would kill this command mid-run. Prints
+# "<closed-count>|<self-ws-or-empty>"; the caller closes <self-ws> LAST (via _close_self),
+# after its final message, so the current workspace is still closed but nothing is lost.
 _close_members() {  # <space-id>
   _self="$(printf '%s' "${CMUX_WORKSPACE_ID:-}" | tr 'a-f' 'A-F')"
-  _cn=0
+  _cn=0; _selfws=""
   for _ws in $(cide_space_members "$1"); do
     [ -n "$_ws" ] || continue
-    if [ -n "$_self" ] && [ "$_ws" = "$_self" ]; then
-      echo "cide-space: keeping current workspace $_ws (you're in it)." >&2; continue
-    fi
+    if [ -n "$_self" ] && [ "$_ws" = "$_self" ]; then _selfws="$_ws"; continue; fi
     cmux close-workspace --workspace "$_ws" >/dev/null 2>&1 || echo "cide-space: warning — could not close $_ws" >&2
     _cn=$(( _cn + 1 ))
   done
-  printf '%s' "$_cn"
+  printf '%s|%s' "$_cn" "$_selfws"
+}
+
+# Close the caller's own workspace — the LAST thing rm/close does, since it would terminate
+# this terminal. cmux PROTECTS the workspace a command is running in (it won't kill its own
+# caller's surface), so this is best-effort: if cmux closes it, this process dies here and
+# the message below never prints; if cmux refuses (the usual case), we fall through and tell
+# the user to close the tab themselves. Everything else must already be done + printed.
+_close_self() {  # <self-ws>
+  [ -n "${1:-}" ] || return 0
+  cmux close-workspace --workspace "$1" >/dev/null 2>&1 || true
+  printf 'cide-space: the workspace you are in (%s) is still open — cmux will not let a command\n' "$1"
+  printf '            close its own tab; close it yourself with Cmd+W.\n'
 }
 
 cmd_close() {
@@ -374,13 +391,14 @@ cmd_close() {
   _id="$(_resolve "$_arg")"; [ -n "$_id" ] || { echo "cide-space: no space '$_arg'." >&2; exit 1; }
   _capture_agents "$_id"   # snapshot live agent checkpoints BEFORE closing (so open can resume)
   _ac="$(awk 'NF' "$CIDE_SPACES/$_id/agents" 2>/dev/null | wc -l | tr -d ' ')"
-  _n="$(_close_members "$_id")"
+  _res="$(_close_members "$_id")"; _n="${_res%%|*}"; _selfws="${_res#*|}"
   _tmp="$CIDE_SPACES/$_id/meta.tmp"
   awk -F'|' 'BEGIN{OFS="|"} {$3="closed"; print}' "$CIDE_SPACES/$_id/meta" > "$_tmp" && mv "$_tmp" "$CIDE_SPACES/$_id/meta"
   printf '%s|%s|%s\n' "$(date +%s)" closed "closed=$_n;agents=${_ac:-0}" >> "$CIDE_SPACES/$_id/history"
   if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
   printf 'cide-space: closed "%s" — %s workspace(s) closed; record + history kept.\n' "$(_field "$_id" 2)" "$_n"
   if [ "${_ac:-0}" -gt 0 ]; then printf '  captured %s agent checkpoint(s) — "cide-space open %s" resumes the conversation.\n' "$_ac" "$(_field "$_id" 2)"; fi
+  _close_self "$_selfws"
 }
 
 cmd_rm() {
@@ -393,7 +411,7 @@ cmd_rm() {
   _nm="$(_field "$_id" 2)"
   if [ "$_force" -ne 1 ]; then
     if [ -t 0 ]; then
-      printf 'cide-space: remove "%s" (%s)? closes its workspaces and purges record + history. [y/N] ' "$_nm" "$_id"
+      printf 'cide-space: remove "%s" (%s)? closes ALL its workspaces (incl. the one you are in — that terminal will close) + purges the record. [y/N] ' "$_nm" "$_id"
       read -r _ans || _ans=""
       case "$_ans" in y|Y|yes|YES) : ;; *) echo "cide-space: aborted."; return 0 ;; esac
     else
@@ -401,14 +419,17 @@ cmd_rm() {
       exit 1
     fi
   fi
-  _n="$(_close_members "$_id")"
+  _res="$(_close_members "$_id")"; _n="${_res%%|*}"; _selfws="${_res#*|}"
   if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
   rm -rf "${CIDE_SPACES:?}/${_id:?}" 2>/dev/null || true
   printf 'cide-space: removed "%s" (%s) — %s workspace(s) closed; record purged.\n' "$_nm" "$_id" "$_n"
+  _close_self "$_selfws"
 }
 
 sub="${1:-ls}"
 [ "$#" -gt 0 ] && shift || true
+# -h/--help works after any subcommand (e.g. `cide-space close -h`), not just at top level.
+for _a in "$@"; do case "$_a" in -h|--help) usage; exit 0 ;; esac; done
 case "$sub" in
   -h|--help)   usage; exit 0 ;;
   new)         cmd_new "$@" ;;
