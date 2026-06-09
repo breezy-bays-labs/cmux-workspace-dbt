@@ -149,9 +149,10 @@ _resume_agent_cmd() {  # <space-id>
 
 # Snapshot any agent (claude) sessions living inside a space's member workspaces into
 # spaces/<id>/agents (role|label|checkpoint|transcriptPath) so `open` can --resume them.
-# Members are resolved LIVE by the cide:spaces tag (workspace.list) — NOT the stored
-# members UUIDs, which die across a cmux restart; resolving by tag is what makes capture
-# survive the very restart this feature exists for. For each live member it reads the
+# Members are resolved LIVE by the cide:spaces tag via `cmux tree --all` (GLOBAL — NOT the
+# stored members UUIDs, which die across a cmux restart, and NOT `workspace.list`, which is
+# focused-window only). Resolving by tag globally is what makes capture survive both a
+# restart AND closing a multi-window space from another window. For each live member it reads the
 # session store and matches store.surfaceId ∈ that workspace's live surfaces; only
 # restorable sessions are recorded. Overwrites the file (latest close wins); leaves a
 # prior file untouched if nothing restorable is found. Call BEFORE closing the workspaces
@@ -160,10 +161,12 @@ _capture_agents() {  # <space-id>
   _caid="$1"; _cadir="$CIDE_SPACES/$_caid"
   [ -f "$CIDE_AGENT_STORE" ] || return 0
   _tmp="$_cadir/agents.tmp"; : > "$_tmp"
-  # live members as UUID<TAB>role (role from the workspace's cide:spaces=<id>;role=<role>
-  # description tag, same scan idiom as cide_space_members; id upper-cased to match store).
-  cmux rpc workspace.list '{}' 2>/dev/null \
-    | jq -r --arg sid "$_caid" '(.workspaces // .)[]
+  # live members as UUID<TAB>role — resolved GLOBALLY via `cmux tree --all` (workspace.list
+  # is focused-window only and would miss a member in another window, e.g. the agent in the
+  # tools window when closing from the editor window). Anchor on workspace nodes
+  # (panes+description+id); role from the cide:spaces=<id>;role=<role> tag; id upper-cased.
+  cmux tree --all --id-format both --json 2>/dev/null \
+    | jq -r --arg sid "$_caid" '[.. | objects | select(has("panes") and has("description") and has("id"))][]
         | select(((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
                   | split(",") | index($sid)) != null)
         | [ (.id | ascii_upcase),
