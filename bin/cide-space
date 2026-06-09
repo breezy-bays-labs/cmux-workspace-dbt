@@ -94,7 +94,9 @@ _resolve_window() {  # <orientation>
   [ "$_omw" = reuse ] && _w="$(cide_find_window "$1" 2>/dev/null || true)"
   if [ -n "$_w" ]; then printf '%s%s' "$_w" "$_t"; return 0; fi
   _o="$(cmux new-window 2>&1)" || return 1
-  _w="$(printf '%s' "$_o" | grep -oE 'window:[0-9]+' | head -1)"
+  # `cmux new-window` prints `OK <uuid>` (NOT `window:N`) — take the token after "OK "
+  # (works for a uuid or a ref, and ignores any deprecation-notice lines).
+  _w="$(printf '%s' "$_o" | sed -n 's/^OK //p' | tr -d '[:space:]')"
   [ -n "$_w" ] || return 1
   _defws="$(cmux tree --window "$_w" 2>/dev/null | grep -oE 'workspace:[0-9]+' | head -1)"
   printf '%s%s%s' "$_w" "$_t" "${_defws:-}"

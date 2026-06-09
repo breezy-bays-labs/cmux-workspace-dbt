@@ -7,7 +7,7 @@
 # best-effort: callers ignore failures so it never blocks the IDE.
 #
 #   cide-place [ls]                       list displays (name / UUID / resolution / orientation)
-#   cide-place move --to <monitor>            move the whole cmux WINDOW onto <monitor>
+#   cide-place move-window --to <monitor>     move the whole cmux WINDOW onto <monitor>  (alias: move)
 #   cide-place move-workspace --to <monitor>  move ONE workspace (a tab-group) onto <monitor>
 #   cide-place move-ide --to <monitor>        move the active space's workspaces that are in
 #                                             THIS window (a subset — not other windows) onto <monitor>
@@ -28,8 +28,8 @@ usage() {
   cat <<'EOF'
 cide-place — monitor-aware window placement (macOS)
   cide-place [ls]                            list displays (name / UUID / resolution / orientation)
-  cide-place move --to <monitor> [--window <ref>]
-                                             move the whole cmux WINDOW onto <monitor>
+  cide-place move-window --to <monitor> [--window <ref>]
+                                             move the whole cmux WINDOW onto <monitor>  (alias: move)
   cide-place move-workspace --to <monitor> [--workspace <ref>]
                                              move ONE workspace onto <monitor> (new window there)
   cide-place move-ide --to <monitor>         move the active space's workspaces in THIS window
@@ -69,8 +69,9 @@ _caller() { cmux identify --json --id-format both 2>/dev/null | jq -r ".caller.$
 # cmux workspaces live inside (macOS) windows, so they need a window on the target screen.
 _new_window_into() {  # <ws-ref-or-id>...
   _nwo="$(cmux new-window 2>&1)" || { echo "cide-place: could not create a window" >&2; return 1; }
-  _nw="$(printf '%s' "$_nwo" | grep -oE 'window:[0-9]+' | head -1)"
-  [ -n "$_nw" ] || { echo "cide-place: could not parse the new window ref" >&2; return 1; }
+  # `cmux new-window` prints `OK <uuid>` — take the token after "OK " (uuid or ref).
+  _nw="$(printf '%s' "$_nwo" | sed -n 's/^OK //p' | tr -d '[:space:]')"
+  [ -n "$_nw" ] || { echo "cide-place: could not parse the new window handle from: $_nwo" >&2; return 1; }
   _nwdef="$(cmux tree --window "$_nw" 2>/dev/null | grep -oE 'workspace:[0-9]+' | head -1)"
   for _w in "$@"; do
     [ -n "$_w" ] || continue
@@ -90,7 +91,7 @@ case "$cmd" in
       printf '%-22s %-38s %-11s %-11s %s\n' "$_n" "$_u" "$_r" "$_o" "$_g"
     done
     ;;
-  move)
+  move-window|move)
     _to=""; _win=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
@@ -103,7 +104,7 @@ case "$cmd" in
       esac
       shift || true
     done
-    [ -n "$_to" ] || { echo "usage: cide-place move --to <monitor> [--window <ref>]" >&2; exit 64; }
+    [ -n "$_to" ] || { echo "usage: cide-place move-window --to <monitor> [--window <ref>]" >&2; exit 64; }
     _place_window "$_win" "$_to"
     ;;
   move-workspace)
