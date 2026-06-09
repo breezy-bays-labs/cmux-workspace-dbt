@@ -46,6 +46,7 @@ case "$cmd" in
     _to=""; _win=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
+        -h|--help)  usage; exit 0 ;;
         --to)       shift; _to="${1:-}" ;;
         --to=*)     _to="${1#--to=}" ;;
         --window)   shift; _win="${1:-}" ;;
@@ -55,9 +56,23 @@ case "$cmd" in
       shift || true
     done
     [ -n "$_to" ] || { echo "usage: cide-place move --to <monitor> [--window <cmux-ref>]" >&2; exit 64; }
-    # Focus the target cmux window so it's the frontmost window the AX move acts on.
+    # Resolve the monitor ref to its canonical macOS name + UUID.
+    _res="$(swift "$SWIFT_HELPER" resolve "$_to" 2>/dev/null)" || { echo "cide-place: no display matched '$_to' (try 'cide-place ls')." >&2; exit 3; }
+    _name="${_res%%"$_t"*}"; _uuid="${_res#*"$_t"}"
+    # Focus the target cmux window so it's the window the move acts on.
     [ -n "$_win" ] && cmux focus-window --window "$_win" >/dev/null 2>&1 || true
-    swift "$SWIFT_HELPER" move "$_to"
+    if pgrep -x AeroSpace >/dev/null 2>&1; then
+      # AeroSpace owns window layout and would instantly re-tile a raw AX move — so
+      # cooperate with it via its own CLI instead of fighting it. (Only when it's the
+      # active WM; a WM-less machine takes the AX path below.)
+      if aerospace move-node-to-monitor "$_name" 2>/dev/null; then
+        echo "cide-place: moved focused window → $_name (via AeroSpace)"
+      else
+        echo "cide-place: AeroSpace move to '$_name' failed." >&2; exit 5
+      fi
+    else
+      swift "$SWIFT_HELPER" move "$_uuid"   # no WM: raw Accessibility move
+    fi
     ;;
   *) echo "cide-place: unknown command '$cmd'" >&2; usage >&2; exit 64 ;;
 esac

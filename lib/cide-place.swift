@@ -63,6 +63,12 @@ case "list":
     for d in displays() {
         print("\(d.name)\t\(d.uuid)\t\(Int(d.bounds.width))x\(Int(d.bounds.height))\t\(d.orientation)\t\(Int(d.bounds.origin.x)),\(Int(d.bounds.origin.y))")
     }
+case "resolve":
+    // Print "<name>\t<uuid>" for the matched display (used by the wrapper to hand a
+    // canonical monitor name to AeroSpace, or a UUID to the AX move). Exit 3 if no match.
+    guard args.count >= 2 else { err("cide-place: resolve needs a monitor ref"); exit(2) }
+    guard let d = resolve(args[1], displays()) else { err("cide-place: no display matched '\(args[1])'"); exit(3) }
+    print("\(d.name)\t\(d.uuid)")
 case "move":
     guard args.count >= 2 else { err("cide-place: move needs a monitor ref"); exit(2) }
     guard let target = resolve(args[1], displays()) else { err("cide-place: no display matched '\(args[1])'"); exit(3) }
