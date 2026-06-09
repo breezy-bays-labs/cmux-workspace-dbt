@@ -371,12 +371,16 @@ _close_members() {  # <space-id>
   printf '%s|%s' "$_cn" "$_selfws"
 }
 
-# Close the caller's own workspace — the LAST thing rm/close does, since it terminates
-# this terminal. Everything else must already be done + printed before calling this.
+# Close the caller's own workspace — the LAST thing rm/close does, since it would terminate
+# this terminal. cmux PROTECTS the workspace a command is running in (it won't kill its own
+# caller's surface), so this is best-effort: if cmux closes it, this process dies here and
+# the message below never prints; if cmux refuses (the usual case), we fall through and tell
+# the user to close the tab themselves. Everything else must already be done + printed.
 _close_self() {  # <self-ws>
   [ -n "${1:-}" ] || return 0
-  printf 'cide-space: closing the workspace you are in (%s) — this terminal will close.\n' "$1"
   cmux close-workspace --workspace "$1" >/dev/null 2>&1 || true
+  printf 'cide-space: the workspace you are in (%s) is still open — cmux will not let a command\n' "$1"
+  printf '            close its own tab; close it yourself with Cmd+W.\n'
 }
 
 cmd_close() {
@@ -389,8 +393,7 @@ cmd_close() {
   awk -F'|' 'BEGIN{OFS="|"} {$3="closed"; print}' "$CIDE_SPACES/$_id/meta" > "$_tmp" && mv "$_tmp" "$CIDE_SPACES/$_id/meta"
   printf '%s|%s|%s\n' "$(date +%s)" closed "closed=$_n;agents=${_ac:-0}" >> "$CIDE_SPACES/$_id/history"
   if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
-  _tot="$_n"; [ -n "$_selfws" ] && _tot=$(( _n + 1 ))
-  printf 'cide-space: closed "%s" — %s workspace(s) closed; record + history kept.\n' "$(_field "$_id" 2)" "$_tot"
+  printf 'cide-space: closed "%s" — %s workspace(s) closed; record + history kept.\n' "$(_field "$_id" 2)" "$_n"
   if [ "${_ac:-0}" -gt 0 ]; then printf '  captured %s agent checkpoint(s) — "cide-space open %s" resumes the conversation.\n' "$_ac" "$(_field "$_id" 2)"; fi
   _close_self "$_selfws"
 }
@@ -416,8 +419,7 @@ cmd_rm() {
   _res="$(_close_members "$_id")"; _n="${_res%%|*}"; _selfws="${_res#*|}"
   if [ "$(cide_current_space)" = "$_id" ]; then rm -f "$CIDE_CURRENT_SPACE" 2>/dev/null || true; fi
   rm -rf "${CIDE_SPACES:?}/${_id:?}" 2>/dev/null || true
-  _tot="$_n"; [ -n "$_selfws" ] && _tot=$(( _n + 1 ))
-  printf 'cide-space: removed "%s" (%s) — %s workspace(s) closed; record purged.\n' "$_nm" "$_id" "$_tot"
+  printf 'cide-space: removed "%s" (%s) — %s workspace(s) closed; record purged.\n' "$_nm" "$_id" "$_n"
   _close_self "$_selfws"
 }
 
