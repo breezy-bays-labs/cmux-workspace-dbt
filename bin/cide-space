@@ -210,7 +210,7 @@ _instantiate() {  # <id> <name> <layout> <cwd>
     _focus=false; [ "$_first" -eq 1 ] && _focus=true
     _out="$(cmux new-workspace --window "$_win" --name "$_ins_name" \
               --description "cide:spaces=$_ins_id;role=$_role" --cwd "$_ins_cwd" \
-              --layout "$_json" --focus "$_focus" 2>&1)" || { echo "cide-space: failed to create $_role workspace" >&2; continue; }
+              --layout "$_json" --focus "$_focus" 2>&1)" || { printf 'cide-space: failed to create %s workspace (window %s):\n%s\n' "$_role" "$_win" "$_out" >&2; continue; }
     _wref="$(printf '%s' "$_out" | grep -oE 'workspace:[0-9]+' | head -1)"
     [ -n "$_defws" ] && cmux close-workspace --workspace "$_defws" --window "$_win" >/dev/null 2>&1 || true
     _wid="$(_ws_uuid "$_wref")"

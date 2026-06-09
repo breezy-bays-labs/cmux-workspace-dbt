@@ -1,0 +1,63 @@
+#!/bin/sh
+# cide-place — monitor-aware window placement for cide (macOS-native; no aerospace/yabai).
+# Lists physical displays (human name / UUID / resolution / orientation) and moves a cmux
+# window onto a chosen monitor. Pure Apple: a small Swift helper (lib/cide-place.swift)
+# using CoreGraphics for display geometry + the Accessibility API for the window move.
+# Requires a one-time Accessibility grant to cmux/Ghostty (NOT `swift`). Placement is
+# best-effort: callers ignore failures so it never blocks the IDE.
+#
+#   cide-place [ls]                       list displays (name / UUID / resolution / orientation)
+#   cide-place move --to <monitor> [--window <cmux-ref>]
+#                                         focus the cmux window (if given), then move it onto <monitor>
+#   <monitor> = macOS name (case-insensitive) | UUID | portrait | landscape | index
+set -eu
+
+self="$0"
+if [ -L "$self" ]; then self="$(readlink "$self")"; fi
+DBT_WS_HOME="${DBT_WS_HOME:-$(cd "$(dirname "$self")/.." && pwd)}"
+SWIFT_HELPER="$DBT_WS_HOME/lib/cide-place.swift"
+_t="$(printf '\t')"
+
+usage() {
+  cat <<'EOF'
+cide-place — monitor-aware window placement (macOS)
+  cide-place [ls]                       list displays (name / UUID / resolution / orientation)
+  cide-place move --to <monitor> [--window <cmux-ref>]
+                                        move a cmux window onto <monitor>
+  <monitor> = macOS name (case-insensitive) | UUID | portrait | landscape | index
+  -h, --help                            show this help
+EOF
+}
+
+command -v swift >/dev/null 2>&1 || { echo "cide-place: 'swift' not found — install Xcode Command Line Tools (xcode-select --install)." >&2; exit 127; }
+[ -f "$SWIFT_HELPER" ] || { echo "cide-place: helper missing: $SWIFT_HELPER" >&2; exit 1; }
+
+cmd="${1:-ls}"
+[ "$#" -gt 0 ] && shift || true
+case "$cmd" in
+  -h|--help) usage; exit 0 ;;
+  ls|list)
+    printf '%-22s %-38s %-11s %-11s %s\n' "NAME" "UUID" "RESOLUTION" "ORIENTATION" "ORIGIN"
+    swift "$SWIFT_HELPER" list 2>/dev/null | while IFS="$_t" read -r _n _u _r _o _g; do
+      printf '%-22s %-38s %-11s %-11s %s\n' "$_n" "$_u" "$_r" "$_o" "$_g"
+    done
+    ;;
+  move)
+    _to=""; _win=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --to)       shift; _to="${1:-}" ;;
+        --to=*)     _to="${1#--to=}" ;;
+        --window)   shift; _win="${1:-}" ;;
+        --window=*) _win="${1#--window=}" ;;
+        *) echo "cide-place: unknown arg '$1'" >&2; exit 64 ;;
+      esac
+      shift || true
+    done
+    [ -n "$_to" ] || { echo "usage: cide-place move --to <monitor> [--window <cmux-ref>]" >&2; exit 64; }
+    # Focus the target cmux window so it's the frontmost window the AX move acts on.
+    [ -n "$_win" ] && cmux focus-window --window "$_win" >/dev/null 2>&1 || true
+    swift "$SWIFT_HELPER" move "$_to"
+    ;;
+  *) echo "cide-place: unknown command '$cmd'" >&2; usage >&2; exit 64 ;;
+esac
