@@ -403,8 +403,7 @@ cmd_rm() {
   _nm="$(_field "$_id" 2)"
   if [ "$_force" -ne 1 ]; then
     if [ -t 0 ]; then
-      printf 'cide-space: remove "%s" (%s)? closes ALL its workspaces (including the one you are\n' "$_nm" "$_id"
-      printf '            in, if any — that terminal will close) and purges record + history. [y/N] '
+      printf 'cide-space: remove "%s" (%s)? closes ALL its workspaces (incl. the one you are in — that terminal will close) + purges the record. [y/N] ' "$_nm" "$_id"
       read -r _ans || _ans=""
       case "$_ans" in y|Y|yes|YES) : ;; *) echo "cide-space: aborted."; return 0 ;; esac
     else

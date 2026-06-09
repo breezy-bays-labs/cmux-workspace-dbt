@@ -235,6 +235,10 @@ cide_space_members() {  # [space-id]
     # ONLY at removed spaces (stale cruft) is self-healed back into the default scope;
     # only a tag naming a LIVE space excludes it. (No tag => default member, as before.)
     _sp_json="$(if [ -d "$CIDE_SPACES" ]; then for _d in "$CIDE_SPACES"/*/; do [ -f "$_d/meta" ] && cut -d'|' -f1 "$_d/meta"; done; fi | jq -Rn '[inputs]')"
+    # NOTE: stays on workspace.list (focused-window only) ON PURPOSE — it carries
+    # current_directory, which the cwd==repo match needs and `cmux tree --all` lacks.
+    # Cross-window DEFAULT scoping is a known follow-up (matters once monitor placement
+    # spreads the baseline IDE across windows); named-space scoping (below) is global.
     cmux rpc workspace.list '{}' 2>/dev/null \
       | jq -r --arg repo "$DBT_WS_HOME" --arg nm "$_nm" --argjson spaces "$_sp_json" \
           '(.workspaces // .)[]
@@ -245,9 +249,15 @@ cide_space_members() {  # [space-id]
              | .id' 2>/dev/null \
       | tr 'a-f' 'A-F' | sort -u
   else
-    cmux rpc workspace.list '{}' 2>/dev/null \
+    # GLOBAL enumeration. `cmux rpc workspace.list` only returns the FOCUSED window's
+    # workspaces, so a space's workspace living in another window is invisible to it —
+    # which silently broke cross-window close/scoping (e.g. `rm` skipping the landscape
+    # tools workspace while you're in the portrait editor). `cmux tree --all --id-format
+    # both` lists EVERY window's workspaces with id + description; anchor on workspace
+    # nodes (they uniquely carry both `panes` and `description`).
+    cmux tree --all --id-format both --json 2>/dev/null \
       | jq -r --arg sid "$_smid" \
-          '(.workspaces // .)[]
+          '[.. | objects | select(has("panes") and has("description") and has("id"))][]
              | select(((.description // "") | [scan("(^|;)cide:spaces=([^;]*)")] | (.[-1] // [""]) | .[-1]
                        | split(",") | index($sid)) != null)
              | .id' 2>/dev/null \
