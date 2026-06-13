@@ -130,3 +130,31 @@ gate (`crap4rs 0.6.0 --config crap.toml --coverage lcov.info` → PASS), all six
   arrive with their verbs in R2+. The `Multiplexer` supertrait is read-only for now.
 - **insta snapshot** of `--json` skipped (review-workflow overhead); the round-trip proptest +
   typed structs + live jq check already lock the contract.
+
+**Status: MERGED (PR #26, all 14 CI checks green).** main @ 001e055.
+
+---
+
+## Overnight session summary (2026-06-09 → 06-13)
+
+**Shipped + merged, all CI-green:** vision (PR #23), roadmap (PR #24), **E0** scaffold +
+CI/quality (PR #25), **E1** walking skeleton `ctide doctor` (PR #26). The ctide Rust
+workspace now exists, compiles, has a working read-only verb verified against live cmux, and
+every quality gate (fmt/clippy/nextest/deny/audit/crap/musl/docs/6 structural lints + the
+preserved shell golden master) runs green on every PR.
+
+**Decisions needing your ruling (all reversible, flagged at the top of this file):**
+1. **GitHub repo rename** `cmux-workspace-dbt → cmux-terminal-ide` — deferred to you (one
+   `gh repo rename`). Crates are already born `ctide`.
+2. **License** — provisionally `MIT OR Apache-2.0`; design-plan named GPL-3.0-only. Needed
+   before the public tap.
+3. **crap4rs** — pinned to published 0.6.0 (string-`src` schema); repo HEAD has a richer schema.
+
+**Next (queued, in order):** E1.5/E2 — the raw cmux **v2-socket transport + recorded replay
+server** (gate 3, g7), then the **runner engine** (#37, keystone A: wrap watchexec binary +
+catalog + bacon fast-path + Dock/Palette/Feed composition). Note: the runner's live-pane
+composition needs Christopher's eyes (build-blind), so its port/engine/catalog logic is
+hermetically testable but the cmux-pane wiring wants live verification.
+
+**Still open (unrelated to the Rust build):** #29 agent-resume live verify (shell dogfood;
+gates R3); the `.cmux/` smoke-test verdict.
