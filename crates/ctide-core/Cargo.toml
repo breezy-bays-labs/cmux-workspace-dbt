@@ -9,5 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 # DEPENDENCY RULE (CI-enforced): ctide-core depends on NOTHING in-workspace.
-# It earns serde/thiserror/uuid/jiff/toml/url as its domain types land in R1.
+# thiserror only — the pure core has typed errors but no I/O, no serde (the wire
+# contract lives in ctide-json; adapters own their own wire types).
 [dependencies]
+thiserror = { workspace = true }

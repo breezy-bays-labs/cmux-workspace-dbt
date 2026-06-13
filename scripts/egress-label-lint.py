@@ -22,6 +22,12 @@ def main() -> int:
     for rs in CRATES.rglob("*.rs"):
         text = rs.read_text(encoding="utf-8")
         for m in OPEN.finditer(text):
+            # Only struct LITERALS, not type positions. Skip `&AdapterManifest {`
+            # (a `-> &AdapterManifest` return type) and `struct AdapterManifest {`
+            # (the definition itself).
+            prefix = text[max(0, m.start() - 12):m.start()].rstrip()
+            if prefix.endswith("&") or prefix.endswith("struct"):
+                continue
             # scan the brace-balanced literal body for an `egress:` field.
             i, depth, body = m.end() - 1, 0, []
             while i < len(text):

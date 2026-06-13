@@ -13,10 +13,9 @@ default-run = "ctide"
 name = "ctide"
 path = "src/main.rs"
 
-# The composition root: clap + wiring ONLY. Depends on everything; NOTHING in the
-# workspace depends on the binary (the dependency rule the dependency-rule gate
-# protects). The explicit `From<&DomainType> for ctide_json::*` impls live here
-# (g4). clap + the rest arrive with the doctor verb at R1.
+# The composition root: clap + wiring. Depends on everything; NOTHING in the
+# workspace depends on the binary (the dependency rule). The explicit
+# `From<&DoctorReport> for ctide_json::DoctorPayload` impl lives here (g4).
 [dependencies]
 ctide-core        = { workspace = true }
 ctide-json        = { workspace = true }
@@ -24,3 +23,10 @@ ctide-mux-cmux    = { workspace = true }
 ctide-adapters    = { workspace = true }
 ctide-dbt         = { workspace = true }
 ctide-place-macos = { workspace = true }
+clap              = { workspace = true }
+serde_json        = { workspace = true }
+
+[dev-dependencies]
+# FakeMux drives the doctor verb end-to-end in tests (no live cmux), covering the
+# I/O shell + the g4 payload bridge + both renderers.
+ctide-testkit = { workspace = true }

@@ -1,0 +1,25 @@
+{
+  "app_bundle_path" : "/Applications/cmux.app",
+  "app_cli_path" : "/Applications/cmux.app/Contents/Resources/bin/cmux",
+  "app_executable_path" : "/Applications/cmux.app/Contents/MacOS/cmux",
+  "bundle_identifier" : "com.cmuxterm.app",
+  "caller" : {
+    "is_browser_surface" : false,
+    "pane_ref" : "pane:3",
+    "surface_ref" : "surface:3",
+    "surface_type" : "terminal",
+    "tab_ref" : "tab:3",
+    "window_ref" : "window:1",
+    "workspace_ref" : "workspace:3"
+  },
+  "focused" : {
+    "is_browser_surface" : false,
+    "pane_ref" : "pane:1",
+    "surface_ref" : "surface:1",
+    "surface_type" : "terminal",
+    "tab_ref" : "tab:1",
+    "window_ref" : "window:1",
+    "workspace_ref" : "workspace:1"
+  },
+  "socket_path" : "/Users/cmbays/.local/state/cmux/cmux.sock"
+}

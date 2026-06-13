@@ -67,3 +67,66 @@ gate (`crap4rs 0.6.0 --config crap.toml --coverage lcov.info` → PASS), all six
 - **License** provisionally `MIT OR Apache-2.0` (see standing decisions) — owner ruling pending.
 - **crap4rs version pin:** using published 0.6.0; the repo HEAD has a richer config schema
   (array src, `[language.rust]`). If you publish a newer crap4rs, we can adopt the array form.
+
+**Status: MERGED (PR #25, all 14 CI checks green).** main @ 4a579c5.
+
+---
+
+## E1 — walking skeleton: `ctide doctor` over the Multiplexer port (#36)
+
+**Status:** built; all local gates green; `ctide doctor` verified against live cmux; PR open.
+**Spec:** `r1-walking-skeleton.md` §2-§7.
+
+### Built (the architecture, proven end-to-end)
+- **ctide-core** — the pure hexagon: domain (topology/identity/capability-drift/egress/
+  provenance/verb-ownership), the `MuxTopology` + `Multiplexer` ports (sync, object-safe),
+  and `plan_doctor` (pure `input → report`) with 4 unit tests.
+- **ctide-json** — the frozen `--json` contract (g4): `DoctorPayload` + `SCHEMA_VERSION = 1`,
+  with a serde **round-trip proptest** (gate 1) and a schema test.
+- **ctide-mux-cmux** — the quirk vault: `wire.rs` (pure parsers + serde types + `// fact:`
+  comments + fixture tests vs real captured cmux JSON) and `CmuxCliAdapter` (shells the
+  read-only cmux CLI). Facts encoded: `tree --all` is the only global enumeration
+  (workspace.list is focused-window-only); `current_directory` absent from tree; UUID
+  normalization; capabilities = `{methods}` + version from `cmux version`.
+- **ctide-testkit** — `FakeMux` (loads the real `fidelity/cmux-0.64.15/` fixtures through
+  the adapter's own parsers), the generic `conform_multiplexer` kit (gate 2), the
+  blast-radius test (reads record zero mutations), and the `#[ignore]` live tier.
+- **ctide bin** — clap `doctor [--json]`, the composition root + `execute` I/O shell, the
+  g4 payload bridge, human + json renderers; bin tests drive it via FakeMux.
+- **fidelity/cmux-0.64.15/** — real captured cmux output (tree/identify/capabilities/version),
+  the single fixture source for the adapter test, FakeMux, and the pinned drift snapshot.
+- mdBook `ctide doctor` chapter (docs-as-you-go).
+
+### Verified
+- All local gates green: fmt, clippy `-D warnings`, nextest `--profile ci` (16 tests),
+  cargo doc `-D warnings`, msrv 1.88, `cargo deny`, the crap gate (worst 12.0, ctide-core
+  at strict-8), all six structural lints (egress-label now catches real manifests).
+- **`ctide doctor` run against live cmux** (read-only, output verified): reads 1 window /
+  5 workspaces, prints egress + zero drift vs pinned + provenance + strangler progress;
+  `--json` emits valid schema-1 ctide-json (jq-checked).
+- The **live conformance tier passes** against real cmux (`--ignored`) — the same
+  conformance suite green on both FakeMux and the real CmuxCliAdapter.
+
+### Gates met vs deferred (vs the spec's 5-gate DoD)
+- ✅ gate 1 (typed schema-versioned `--json`) — round-trip proptest + live jq check.
+- ✅ gate 2 (FakeMux conformance).
+- ✅ gate 4 (deny no-tokio/no-HTTP + no-config-write) — from E0, still green.
+- ⏭ **gate 3 (recorded-socket replay server, g7) DEFERRED** to a follow-up. E1 ships the
+  CLI-transport adapter (works today, verified live) + the live-tier conformance instead of
+  the raw v2-socket transport + its recorded replay. Rationale: the socket protocol is the
+  deep/exploratory part; the CLI adapter delivers a *working* `ctide doctor` now and the
+  conformance kit already proves the port abstraction across two impls (FakeMux + live).
+- ⏭ **gate 5 (hyperfine SLO bench) DEFERRED** — hyperfine isn't installed; it's record-only
+  at this slice anyway (becomes a release blocker when hot-path verbs land, R2/R4).
+
+### Deviations (flagged)
+- **Scope:** built `CmuxCliAdapter` (CLI transport) instead of the raw v2-socket adapter; the
+  socket transport + replay-server CI tier (g7) is the next slice. See gate 3 above.
+- **g4 bridge is a free function** `payload_from_report`, not `impl From` — the orphan rule
+  forbids `impl From<ForeignA> for ForeignB` in the bin. Intent preserved (explicit, in the bin).
+- **IDs are normalized `String`s** at this slice, not the typed `MuxId { uuid, ref_hint }` —
+  doctor only reads/displays; the typed id lands when persistence needs it (spaces, R3).
+- **Write-side capability traits** (`MuxWorkspaces`/`MuxSurfaces`/…) not declared yet — they
+  arrive with their verbs in R2+. The `Multiplexer` supertrait is read-only for now.
+- **insta snapshot** of `--json` skipped (review-workflow overhead); the round-trip proptest +
+  typed structs + live jq check already lock the contract.

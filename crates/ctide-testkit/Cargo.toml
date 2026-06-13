@@ -8,17 +8,16 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# Test infrastructure (FakeMux, fixtures, replay server, port conformance kit).
-# Excluded from the production CRAP aggregate by design (see crap.toml /
-# adr-testkit-coverage). FakeMux + conformance land with ctide doctor at R1.
+# Test infrastructure (FakeMux, fixtures, the port conformance kit). Excluded from
+# the production CRAP aggregate by design (crap.toml / adr-testkit-coverage). FakeMux
+# loads the real fidelity/ fixtures through the cmux adapter's own pure parsers, so
+# the fake serves genuinely-captured state.
 [dependencies]
 ctide-core     = { workspace = true }
-ctide-json     = { workspace = true }
 ctide-mux-cmux = { workspace = true }
 
-# DEV-ONLY async stack. tokio is BANNED from the shipped graph (deny.toml [bans]),
-# but cucumber-rs's harness pulls it dev-only; deny's `exclude-dev = true` scopes
-# the ban to the shipped graph so this passes. The dev-test below exercises the
-# carve-out for real (proves exclude-dev works — the most important R0 carve-out).
+# DEV-ONLY async stack. tokio is BANNED from the shipped graph (deny.toml [bans]);
+# deny's `exclude-dev = true` scopes the ban to the shipped graph so this passes.
+# The dev-test in lib.rs exercises the carve-out for real.
 [dev-dependencies]
 tokio = { workspace = true }

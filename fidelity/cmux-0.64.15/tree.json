@@ -1,0 +1,335 @@
+{
+  "active" : {
+    "is_browser_surface" : false,
+    "pane_id" : "9DFA2D1D-7447-4CF1-9765-D5614F861430",
+    "pane_ref" : "pane:1",
+    "surface_id" : "89FE9E00-75EA-440C-8C28-E31AD676DE46",
+    "surface_ref" : "surface:1",
+    "surface_type" : "terminal",
+    "tab_id" : "89FE9E00-75EA-440C-8C28-E31AD676DE46",
+    "tab_ref" : "tab:1",
+    "window_id" : "43ACAD8D-C542-4BFA-B1FF-41258713D5A7",
+    "window_ref" : "window:1",
+    "workspace_id" : "F91439F6-311F-472A-B5EC-0AB1F3F8B567",
+    "workspace_ref" : "workspace:1"
+  },
+  "caller" : {
+    "is_browser_surface" : false,
+    "pane_id" : "737C0B73-1CAF-4795-8EB3-E8076187DA41",
+    "pane_ref" : "pane:3",
+    "surface_id" : "44E89BC7-E62C-4178-9FBC-E85724CE563C",
+    "surface_ref" : "surface:3",
+    "surface_type" : "terminal",
+    "tab_id" : "44E89BC7-E62C-4178-9FBC-E85724CE563C",
+    "tab_ref" : "tab:3",
+    "window_id" : "43ACAD8D-C542-4BFA-B1FF-41258713D5A7",
+    "window_ref" : "window:1",
+    "workspace_id" : "587656B2-834A-46FA-951C-AEE81B69FBFA",
+    "workspace_ref" : "workspace:3"
+  },
+  "windows" : [
+    {
+      "active" : true,
+      "current" : true,
+      "id" : "43ACAD8D-C542-4BFA-B1FF-41258713D5A7",
+      "index" : 0,
+      "key" : false,
+      "ref" : "window:1",
+      "selected_workspace_id" : "F91439F6-311F-472A-B5EC-0AB1F3F8B567",
+      "selected_workspace_ref" : "workspace:1",
+      "visible" : true,
+      "workspace_count" : 5,
+      "workspaces" : [
+        {
+          "active" : true,
+          "description" : null,
+          "id" : "F91439F6-311F-472A-B5EC-0AB1F3F8B567",
+          "index" : 0,
+          "panes" : [
+            {
+              "active" : true,
+              "focused" : true,
+              "id" : "9DFA2D1D-7447-4CF1-9765-D5614F861430",
+              "index" : 0,
+              "ref" : "pane:1",
+              "selected_surface_id" : "89FE9E00-75EA-440C-8C28-E31AD676DE46",
+              "selected_surface_ref" : "surface:1",
+              "surface_count" : 1,
+              "surface_ids" : [
+                "89FE9E00-75EA-440C-8C28-E31AD676DE46"
+              ],
+              "surface_refs" : [
+                "surface:1"
+              ],
+              "surfaces" : [
+                {
+                  "active" : true,
+                  "focused" : true,
+                  "here" : false,
+                  "id" : "89FE9E00-75EA-440C-8C28-E31AD676DE46",
+                  "index" : 0,
+                  "index_in_pane" : 0,
+                  "pane_id" : "9DFA2D1D-7447-4CF1-9765-D5614F861430",
+                  "pane_ref" : "pane:1",
+                  "ref" : "surface:1",
+                  "selected" : true,
+                  "selected_in_pane" : true,
+                  "title" : "⠐ crap-rs-next-session",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                }
+              ]
+            },
+            {
+              "active" : false,
+              "focused" : false,
+              "id" : "C0C16696-8E02-4C29-BF68-7AD59F0C58B2",
+              "index" : 1,
+              "ref" : "pane:10",
+              "selected_surface_id" : "14C975EB-B417-4FD8-897D-D30ACE89215A",
+              "selected_surface_ref" : "surface:11",
+              "surface_count" : 1,
+              "surface_ids" : [
+                "14C975EB-B417-4FD8-897D-D30ACE89215A"
+              ],
+              "surface_refs" : [
+                "surface:11"
+              ],
+              "surfaces" : [
+                {
+                  "active" : false,
+                  "focused" : false,
+                  "here" : false,
+                  "id" : "14C975EB-B417-4FD8-897D-D30ACE89215A",
+                  "index" : 1,
+                  "index_in_pane" : 0,
+                  "pane_id" : "C0C16696-8E02-4C29-BF68-7AD59F0C58B2",
+                  "pane_ref" : "pane:10",
+                  "ref" : "surface:11",
+                  "selected" : true,
+                  "selected_in_pane" : true,
+                  "title" : "~/github/crap4rs> caffeinate",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                }
+              ]
+            }
+          ],
+          "pinned" : false,
+          "ref" : "workspace:1",
+          "selected" : true,
+          "title" : "crap-rs"
+        },
+        {
+          "active" : false,
+          "description" : null,
+          "id" : "4AC75E52-C6E2-47BD-81FE-0482462B1AA8",
+          "index" : 1,
+          "panes" : [
+            {
+              "active" : false,
+              "focused" : true,
+              "id" : "8E28EAE2-9D36-4316-B7D3-F406DFC61A94",
+              "index" : 0,
+              "ref" : "pane:2",
+              "selected_surface_id" : "81B3AE28-DA17-499F-8710-28DF1C3CFFA7",
+              "selected_surface_ref" : "surface:2",
+              "surface_count" : 1,
+              "surface_ids" : [
+                "81B3AE28-DA17-499F-8710-28DF1C3CFFA7"
+              ],
+              "surface_refs" : [
+                "surface:2"
+              ],
+              "surfaces" : [
+                {
+                  "active" : false,
+                  "focused" : true,
+                  "here" : false,
+                  "id" : "81B3AE28-DA17-499F-8710-28DF1C3CFFA7",
+                  "index" : 0,
+                  "index_in_pane" : 0,
+                  "pane_id" : "8E28EAE2-9D36-4316-B7D3-F406DFC61A94",
+                  "pane_ref" : "pane:2",
+                  "ref" : "surface:2",
+                  "selected" : true,
+                  "selected_in_pane" : true,
+                  "title" : "⠐ cute-dbt-next-session",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                }
+              ]
+            }
+          ],
+          "pinned" : false,
+          "ref" : "workspace:2",
+          "selected" : false,
+          "title" : "cute-dbt"
+        },
+        {
+          "active" : false,
+          "description" : null,
+          "id" : "587656B2-834A-46FA-951C-AEE81B69FBFA",
+          "index" : 2,
+          "panes" : [
+            {
+              "active" : false,
+              "focused" : true,
+              "id" : "737C0B73-1CAF-4795-8EB3-E8076187DA41",
+              "index" : 0,
+              "ref" : "pane:3",
+              "selected_surface_id" : "44E89BC7-E62C-4178-9FBC-E85724CE563C",
+              "selected_surface_ref" : "surface:3",
+              "surface_count" : 2,
+              "surface_ids" : [
+                "44E89BC7-E62C-4178-9FBC-E85724CE563C",
+                "30A55066-C545-4533-928E-D9E721938F49"
+              ],
+              "surface_refs" : [
+                "surface:3",
+                "surface:4"
+              ],
+              "surfaces" : [
+                {
+                  "active" : false,
+                  "focused" : true,
+                  "here" : true,
+                  "id" : "44E89BC7-E62C-4178-9FBC-E85724CE563C",
+                  "index" : 0,
+                  "index_in_pane" : 0,
+                  "pane_id" : "737C0B73-1CAF-4795-8EB3-E8076187DA41",
+                  "pane_ref" : "pane:3",
+                  "ref" : "surface:3",
+                  "selected" : true,
+                  "selected_in_pane" : true,
+                  "title" : "⠐ cide",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                },
+                {
+                  "active" : false,
+                  "focused" : false,
+                  "here" : false,
+                  "id" : "30A55066-C545-4533-928E-D9E721938F49",
+                  "index" : 1,
+                  "index_in_pane" : 1,
+                  "pane_id" : "737C0B73-1CAF-4795-8EB3-E8076187DA41",
+                  "pane_ref" : "pane:3",
+                  "ref" : "surface:4",
+                  "selected" : false,
+                  "selected_in_pane" : false,
+                  "title" : "~/github/cmux-workspace-dbt",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                }
+              ]
+            }
+          ],
+          "pinned" : false,
+          "ref" : "workspace:3",
+          "selected" : false,
+          "title" : "⠐ cide"
+        },
+        {
+          "active" : false,
+          "description" : null,
+          "id" : "5E42DDF5-9E4A-4E13-A7AF-96B3F9FA1323",
+          "index" : 3,
+          "panes" : [
+            {
+              "active" : false,
+              "focused" : true,
+              "id" : "3A077A45-D758-44D1-BAAC-872884D11C4B",
+              "index" : 0,
+              "ref" : "pane:4",
+              "selected_surface_id" : "7725F5E4-89CD-4B25-935B-8846BC591986",
+              "selected_surface_ref" : "surface:5",
+              "surface_count" : 1,
+              "surface_ids" : [
+                "7725F5E4-89CD-4B25-935B-8846BC591986"
+              ],
+              "surface_refs" : [
+                "surface:5"
+              ],
+              "surfaces" : [
+                {
+                  "active" : false,
+                  "focused" : true,
+                  "here" : false,
+                  "id" : "7725F5E4-89CD-4B25-935B-8846BC591986",
+                  "index" : 0,
+                  "index_in_pane" : 0,
+                  "pane_id" : "3A077A45-D758-44D1-BAAC-872884D11C4B",
+                  "pane_ref" : "pane:4",
+                  "ref" : "surface:5",
+                  "selected" : true,
+                  "selected_in_pane" : true,
+                  "title" : "~/github/scrap-rs",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                }
+              ]
+            }
+          ],
+          "pinned" : false,
+          "ref" : "workspace:4",
+          "selected" : false,
+          "title" : "scrap-rs"
+        },
+        {
+          "active" : false,
+          "description" : null,
+          "id" : "4D7E6E03-7BF1-4C05-B54D-69939497FBCB",
+          "index" : 4,
+          "panes" : [
+            {
+              "active" : false,
+              "focused" : true,
+              "id" : "7935F1E1-5843-4105-BB88-525CD163DB48",
+              "index" : 0,
+              "ref" : "pane:5",
+              "selected_surface_id" : "67D99B96-B9CC-42F3-88C2-BFB18C841889",
+              "selected_surface_ref" : "surface:6",
+              "surface_count" : 1,
+              "surface_ids" : [
+                "67D99B96-B9CC-42F3-88C2-BFB18C841889"
+              ],
+              "surface_refs" : [
+                "surface:6"
+              ],
+              "surfaces" : [
+                {
+                  "active" : false,
+                  "focused" : true,
+                  "here" : false,
+                  "id" : "67D99B96-B9CC-42F3-88C2-BFB18C841889",
+                  "index" : 0,
+                  "index_in_pane" : 0,
+                  "pane_id" : "7935F1E1-5843-4105-BB88-525CD163DB48",
+                  "pane_ref" : "pane:5",
+                  "ref" : "surface:6",
+                  "selected" : true,
+                  "selected_in_pane" : true,
+                  "title" : "✳ Implement clustering for DRY code duplication detection",
+                  "tty" : null,
+                  "type" : "terminal",
+                  "url" : null
+                }
+              ]
+            }
+          ],
+          "pinned" : false,
+          "ref" : "workspace:5",
+          "selected" : false,
+          "title" : "dry-rs"
+        }
+      ]
+    }
+  ]
+}

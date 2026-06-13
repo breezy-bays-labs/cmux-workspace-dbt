@@ -8,10 +8,11 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# Implements ctide-core's Multiplexer port over the cmux unix socket. Every
-# hard-won cmux quirk (tree --all global enumeration, OK-line parsing, caller
-# protection, ghost windows, cwd-merge) is encapsulated HERE and nowhere else
-# (the quirk-vault lint enforces this). Earns serde_json + rustix in R1.
+# Implements ctide-core's Multiplexer port over the cmux CLI/socket. Every
+# hard-won cmux quirk lives HERE and nowhere else (the quirk-vault lint enforces
+# this). Wire parsing is in wire.rs (pure + fixture-tested); the I/O shell is
+# adapter.rs. serde_json parses the cmux JSON output.
 [dependencies]
 ctide-core = { workspace = true }
-ctide-json = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }

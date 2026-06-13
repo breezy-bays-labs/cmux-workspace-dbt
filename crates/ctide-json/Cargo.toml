@@ -11,3 +11,8 @@ authors.workspace = true
 # The frozen machine-first contract (design-plan g4). serde ONLY — decoupled from
 # ctide-core domain types so internal refactors can't silently break the wire shape.
 [dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+proptest = { workspace = true }
