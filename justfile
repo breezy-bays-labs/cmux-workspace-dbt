@@ -1,5 +1,5 @@
-# cide / cmux-workspace-dbt — task runner.  `just` or `just --list` shows recipes.
-# Opened in the task-runner pane of the cide IDE layout.
+# cmux-terminal-ide (ctide) — task runner.  `just` or `just --list` shows recipes.
+# Opened in the task-runner pane of the ctide IDE layout.
 
 # list available recipes (default)
 default:

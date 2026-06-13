@@ -4,16 +4,16 @@ Running log of the autonomous overnight build through the roadmap (`roadmap.md`)
 One section per epic/PR. Each records what was built, deviations from spec, product
 decisions made autonomously, and open uncertainties. This is the spine of the final report.
 
-> **Standing autonomous decisions** (apply to every PR below; up for debate):
-> - **GitHub repo rename deferred** to the owner. Crates are born `ctide` inside the current
->   `cmux-workspace-dbt` repo; `gh repo rename cmux-workspace-dbt cmux-terminal-ide` is a
->   one-step owner action later. The Cargo `repository` field points forward to the
->   cmux-terminal-ide URL. Reason: a repo rename is outward-facing (URLs, ops/memory paths,
->   bookmarks) and trivially reversible-but-not-mine-to-trigger overnight.
-> - **License = `MIT OR Apache-2.0`, provisional.** The design plan named GPL-3.0-only as the
->   org default, but crap4rs and cute-dbt both ship `MIT OR Apache-2.0`. Picked the ecosystem
->   default to keep `cargo deny` license-consistent and unblock the build; it is a one-line
->   change. **Owner ruling needed** (design-plan OQ #8) before the public brew tap.
+> **Resolved owner rulings (2026-06-13, PR #28):**
+> - **GitHub repo RENAMED** `cmux-workspace-dbt → cmux-terminal-ide` (`gh repo rename`; remote
+>   auto-updated; GitHub redirects the old URL). The **local checkout dir stays
+>   `cmux-workspace-dbt`** on this machine (preserves the Claude project-memory path key).
+>   Repo-identity references (README badge/clone URLs, header comments) updated; the shell
+>   dogfood's runtime paths (`~/.local/share/cmux-workspace-dbt/…`, `DBT_WS_*`) intentionally
+>   kept (renaming them breaks installed dogfood). Captured fixture title left as real data.
+> - **License = `MIT`** (owner ruling; resolves design-plan OQ #8, supersedes its GPL-3.0-only
+>   default). `LICENSE` already held MIT text; `Cargo.toml` updated `MIT OR Apache-2.0 → MIT`.
+>   The `deny.toml` allow-list keeps Apache-2.0/MIT/etc. for *dependency* licenses.
 
 ---
 

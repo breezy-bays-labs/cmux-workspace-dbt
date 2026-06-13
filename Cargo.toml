@@ -1,9 +1,9 @@
 # cmux-terminal-ide (binary `ctide`) — the Rust workspace.
 #
 # Born "ctide" from crate one (the POSIX-sh `cide` dogfood in bin/ + lib/ is
-# strangled, not renamed — see docs/roadmap/rebrand-ctide.md). The GitHub repo
-# rename cmux-workspace-dbt -> cmux-terminal-ide is a deferred owner action; the
-# `repository` URL below is forward-looking. The shell dogfood coexists in this
+# strangled, not renamed — see docs/roadmap/rebrand-ctide.md). The GitHub repo is
+# `breezy-bays-labs/cmux-terminal-ide` (renamed 2026-06-13); the local checkout dir
+# stays `cmux-workspace-dbt` on this machine. The shell dogfood coexists in this
 # same tree during the strangler migration (docs/roadmap/roadmap.md §3).
 #
 # The 8-crate DAG (docs/vision/design-plan.md §2; docs/roadmap/r1-walking-skeleton.md §1.1):
@@ -29,10 +29,9 @@ members = [
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"                 # MSRV floor (cucumber 0.22 dev-dep needs 1.88)
-# PROVISIONAL license — design-plan named GPL-3.0-only, but crap4rs + cute-dbt ship
-# MIT OR Apache-2.0. Using the ecosystem default to keep cargo-deny consistent and
-# unblock the scaffold; owner ruling pending (design-plan OQ #8) before the public tap.
-license = "MIT OR Apache-2.0"
+# License: MIT (owner ruling, 2026-06-13 — resolves design-plan OQ #8, superseding the
+# GPL-3.0-only default it proposed). LICENSE holds the MIT text.
+license = "MIT"
 repository = "https://github.com/breezy-bays-labs/cmux-terminal-ide"
 authors = ["Christopher Bays <cmbays@breezybayslabs.com>"]
 

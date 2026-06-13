@@ -1,5 +1,5 @@
 #!/bin/sh
-# Layer-1 logic tests for cmux-workspace-dbt.
+# Layer-1 logic tests for cmux-terminal-ide (the cwd/cide Phase-0 shell dogfood).
 #
 # Runs cwd-route / cwd-focus / cwd / install.sh with a STUB cmux (and
 # git/duckdb/fd/hunk/ya) on PATH, then asserts the exact commands they would have
