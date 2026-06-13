@@ -1,0 +1,15 @@
+[package]
+name = "ctide-place-macos"
+description = "macOS window placement for ctide's Placement port (CoreGraphics/AppKit/AX via objc2)."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# The macOS adapter for ctide-core's Placement port (monitor detection + window
+# placement; today's lib/cide-place.swift, ported to objc2). cfg(target_os="macos");
+# a NoopPlacement keeps Linux unblocked. objc2 lands at R3. Stub at R0.
+[target.'cfg(target_os = "macos")'.dependencies]
+ctide-core = { workspace = true }

@@ -1,0 +1,16 @@
+# cargo-nextest configuration (adapted from crap4rs).
+#
+# NOTE: the cucumber-rs exclusion filter (`not binary(/.*_cucumber$/)`) is NOT set
+# yet — at E0 there are no `*_cucumber` targets and nextest errors on a binary()
+# predicate that matches nothing. It returns in E1 with the first cucumber suite
+# (which builds `harness = false` and must run via `cargo test --test <name>`).
+# Name future cucumber targets `<feature>_cucumber` so the filter catches them.
+
+# CI profile: bounded retries that SURFACE flakes (never silently pass) + no
+# fail-fast so one failure doesn't mask the rest (ci-quality-framework.md §4.3).
+[profile.ci]
+retries = { backoff = "fixed", count = 2, delay = "1s" }
+fail-fast = false
+slow-timeout = { period = "60s", terminate-after = 3 }
+failure-output = "immediate-final"
+status-level = "retry"            # report retried-then-passed as a flake signal

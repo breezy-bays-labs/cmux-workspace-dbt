@@ -1,0 +1,19 @@
+# mdBook config for the ctide product documentation ("the rustbook").
+# Structure defined in docs/roadmap/product-docs-plan.md; filled docs-as-you-go,
+# one chapter per shipping epic. Built + published (GitHub Pages) only via the
+# held docs.yml workflow — first publish at the end-R2 checkpoint (roadmap §7).
+[book]
+title = "cmux-terminal-ide (ctide)"
+authors = ["Christopher Bays"]
+description = "A lightweight, agent-native terminal IDE composed on cmux."
+src = "src"
+language = "en"
+
+[output.html]
+default-theme = "navy"
+git-repository-url = "https://github.com/breezy-bays-labs/cmux-terminal-ide"
+edit-url-template = "https://github.com/breezy-bays-labs/cmux-terminal-ide/edit/main/docs/book/{path}"
+
+[output.html.fold]
+enable = true
+level = 1

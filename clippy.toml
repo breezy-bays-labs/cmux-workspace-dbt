@@ -1,0 +1,2 @@
+# Early-warning that front-runs the CRAP gate (mirrors the workspace CRAP default 15).
+cognitive-complexity-threshold = 15

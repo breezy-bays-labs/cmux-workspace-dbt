@@ -1,28 +1,200 @@
-# .github/workflows/ci.yml — mechanical quality gate for cmux-workspace-dbt.
+# .github/workflows/ci.yml — CI for cmux-terminal-ide (binary `ctide`).
 #
-# MIRROR: lefthook.yml `pre-push` runs the IDENTICAL two commands (the shellcheck
-# glob, then the stub suite). Keep the two files in lockstep — any change to the
-# lint glob, the runner, or the suite command MUST touch BOTH atomically
-# (lefthook ↔ CI mirror-drift rule).
+# Two generations run side-by-side during the strangler migration (roadmap §3, §5):
+#   • strangler-gate — the inherited POSIX-sh golden master (shellcheck + tests/run.sh),
+#     UNCHANGED until R5 retires it. The `mirror-drift` lint keeps it lockstep with lefthook.
+#   • the Rust gates — born under the ctide-* crates (E0 scaffold).
+# Both green is the strangler permit. Cheap gates run on ubuntu; only the Rust test matrix
+# and the shell gate touch macOS (the macOS-minute economy; a changes-filter refinement is
+# a noted follow-up — ci-quality-framework.md §3.1).
+#
+# Determinism: every cargo invocation is --locked; rust-toolchain.toml pins 1.95.0; actions
+# are SHA-pinned (ported from crap4rs). The crap gate consumes a version-pinned crap4rs.
 name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  CRAP4RS_VERSION: "0.6.0"          # pinned gate tool (determinism rule 1)
+
 jobs:
-  gate:
-    # macOS-only tool: the stub suite has darwin assumptions (e.g. `getconf
-    # DARWIN_USER_TEMP_DIR` in `darwin_tmp`). An ubuntu runner would false-fail.
+  # ── Strangler generation: the inherited shell golden master (unchanged) ──
+  strangler-gate:
+    name: strangler-gate (shell golden master)
+    # macOS-only: the stub suite has darwin assumptions (e.g. getconf DARWIN_USER_TEMP_DIR).
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - name: Ensure shellcheck is available
         run: command -v shellcheck >/dev/null 2>&1 || brew install shellcheck
       - name: shellcheck (executable scripts + sourced lib)
         run: shellcheck bin/* lib/*.sh install.sh tests/*.sh
       - name: stub-cmux suite
         run: sh tests/run.sh
+
+  # ── Rust generation ──
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  msrv:
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # @stable family
+        with:
+          toolchain: "1.88"
+      - run: cargo +1.88 check --workspace --all-targets --locked
+
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-arm
+          - os: ubuntu-latest
+            name: linux-x86
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2
+        with:
+          tool: cargo-nextest@0.9
+      - name: Verify cargo + nextest resolve (broken-rustup canary)
+        run: |
+          cargo --version
+          cargo nextest --version
+      - run: cargo nextest run --workspace --all-targets --locked --profile ci
+
+  docs:
+    name: docs (rustdoc)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: cargo doc --workspace --no-deps --locked
+
+  deny:
+    name: cargo-deny (supply chain + zero-egress ban)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2
+        with:
+          tool: cargo-deny@0.19
+      - run: cargo deny check
+
+  audit:
+    name: cargo-audit (RustSec)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit --deny warnings
+
+  coverage-crap:
+    name: coverage → crap gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2
+        with:
+          tool: cargo-nextest@0.9,cargo-llvm-cov@0.6
+      - name: Generate lcov (zero-egress; artifact stays in CI)
+        run: cargo llvm-cov nextest --workspace --locked --lcov --output-path lcov.info
+      - name: Install the pinned crap4rs gate
+        run: cargo install crap4rs --version "=${CRAP4RS_VERSION}" --locked
+      - name: CRAP gate (config from crap.toml; ctide-core at strict-8)
+        run: crap4rs --config crap.toml --coverage lcov.info
+
+  linux-musl-compile:
+    name: linux-musl-compile (Linux-not-precluded insurance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - name: Add the musl target to the pinned toolchain
+        # rust-toolchain.toml pins 1.95.0, a distinct toolchain from dtolnay's
+        # @stable — so the target must be added against the PINNED toolchain (a
+        # bare `rustup target add` in the repo dir resolves to 1.95.0), else
+        # rustc reports "can't find crate for std". x86_64 musl is native-arch on
+        # the x86 runner: needs only musl-tools, no cross-linker. aarch64-musl
+        # cross-link is deferred (r1-walking-skeleton §1.7 musl note, option c).
+        run: rustup target add x86_64-unknown-linux-musl
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --workspace --locked --target x86_64-unknown-linux-musl
+
+  structural-lints:
+    name: structural trust gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust   # dependency-rule + dep-budget call `cargo metadata`
+      - name: dependency-rule (the hexagon DAG)
+        run: python3 scripts/dependency-rule-lint.py
+      - name: dep-budget (no tokio/HTTP/sqlite in the shipped graph)
+        run: python3 scripts/dep-budget-lint.py
+      - name: no-config-write (never ~/.config)
+        run: python3 scripts/no-config-write-lint.py
+      - name: egress-labels (every AdapterManifest labelled)
+        run: python3 scripts/egress-label-lint.py
+      - name: quirk-vault (cmux facts confined to ctide-mux-cmux)
+        run: python3 scripts/quirk-vault-lint.py
+      - name: mirror-drift (shell gate lockstep CI ↔ lefthook)
+        run: python3 scripts/mirror-drift-lint.py

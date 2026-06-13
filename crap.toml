@@ -1,0 +1,26 @@
+# CRAP gate (adopt crap4rs as the quality gate — ci-quality-framework.md §2/§8).
+# Schema for the pinned crap4rs 0.6.0 (CI: crap4rs --config crap.toml --coverage lcov.info).
+# The gate is unshapeable: it always ranges over the full analyzed set.
+
+# Workspace default: born at "default" (15) — the honest line for a strangler-built
+# tree; it will not flake-red on R1 scaffolding (ratchet to strict after R4, OQ #1).
+preset = "default"
+
+# Cognitive complexity (the Rust-idiomatic metric). Top-level for the pinned crap4rs
+# 0.6.0 schema; this is single-language (no crap4ts), so a top-level metric is safe.
+metric = "cognitive"
+
+# Single source root (the installed 0.6.0 takes one string; paths below are
+# src-relative to this root). The walker covers every crate's src under crates/.
+src = "crates"
+
+# Exclude test infrastructure (ctide-testkit: FakeMux, fixtures, replay server) from
+# the production aggregate, plus any per-crate tests/ trees. (adr: ops/decisions/
+# cmux-terminal-ide/adr-testkit-coverage.md — testkit is test infra, 0% production-gate by design.)
+exclude = ["ctide-testkit/**", "**/tests/**"]
+
+# Per-path override: the hexagon (ctide-core) stays in the Low risk band (strict-8);
+# wire parsing and adapters keep the default 15 (irreducible branchiness).
+[[overrides]]
+pattern = "ctide-core/src/**"
+threshold = 8.0

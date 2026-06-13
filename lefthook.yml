@@ -1,12 +1,50 @@
-# lefthook.yml — local pre-push gate for cmux-workspace-dbt.
+# lefthook.yml — local pre-push gate for cmux-terminal-ide (binary `ctide`).
 #
-# MIRROR: .github/workflows/ci.yml `gate` job runs the IDENTICAL two commands.
-# Keep the two files in lockstep — any change to the lint glob or the suite
-# command MUST touch BOTH atomically (lefthook ↔ CI mirror-drift rule).
+# MIRROR: .github/workflows/ci.yml runs the IDENTICAL shell golden-master commands
+# (the `mirror-drift` lint enforces it). The shell gate (shellcheck + tests/run.sh)
+# is the inherited POSIX-sh golden master and runs UNCHANGED until R5 retires it
+# (strangler coexistence). The Rust gates are born under the ctide-* crates.
+#
+# Crap (needs llvm-cov), musl-compile, cargo-audit (network), and msrv (separate
+# toolchain) are CI-only — too slow/heavy for every push. Everything here is fast.
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+
 pre-push:
   parallel: false
   commands:
+    # ── shell golden-master gate — UNCHANGED through R1-R5 (retires at R5) ──
     shellcheck:
       run: shellcheck bin/* lib/*.sh install.sh tests/*.sh
     stub-suite:
       run: sh tests/run.sh
+    # ── Rust gates (mirror of ci.yml) ──
+    fmt:
+      run: cargo fmt --all --check
+    clippy:
+      run: cargo clippy --workspace --all-targets --locked -- -D warnings
+    deny:
+      run: cargo deny check
+    test:
+      run: cargo nextest run --workspace --all-targets --locked --profile ci
+    docs:
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+      run: cargo doc --workspace --no-deps --locked
+    # ── structural trust gates (sub-second; fail at push, not in CI) ──
+    dependency-rule:
+      run: python3 scripts/dependency-rule-lint.py
+    dep-budget:
+      run: python3 scripts/dep-budget-lint.py
+    no-config-write:
+      run: python3 scripts/no-config-write-lint.py
+    egress-labels:
+      run: python3 scripts/egress-label-lint.py
+    quirk-vault:
+      run: python3 scripts/quirk-vault-lint.py
+    mirror-drift:
+      run: python3 scripts/mirror-drift-lint.py
