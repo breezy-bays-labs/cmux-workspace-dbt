@@ -1,0 +1,13 @@
+[package]
+name = "ctide-core"
+description = "ctide hexagonal domain model + capability ports (pure, sync, no I/O)."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# DEPENDENCY RULE (CI-enforced): ctide-core depends on NOTHING in-workspace.
+# It earns serde/thiserror/uuid/jiff/toml/url as its domain types land in R1.
+[dependencies]

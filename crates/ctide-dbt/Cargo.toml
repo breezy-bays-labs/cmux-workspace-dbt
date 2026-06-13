@@ -1,0 +1,16 @@
+[package]
+name = "ctide-dbt"
+description = "ctide dbt-vertical adapter (Warehouse/DbtReview ports). Recipe is data; code is thin."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# The dbt vertical's adapter CODE only (Warehouse + DbtReview ports, cute-dbt
+# integration). The dbt IDE itself is a DATA recipe over the base, not a code
+# fork. Stub at R0; earns code at R5.
+[dependencies]
+ctide-core = { workspace = true }
+ctide-json = { workspace = true }

@@ -1,0 +1,7 @@
+# Pinned to a SPECIFIC stable (determinism rule 1, ci-quality-framework.md §6.1) —
+# not the floating "stable" channel, so a new stable release cannot flip CI between
+# identical commits. Bump deliberately. llvm-tools-preview is required by
+# cargo-llvm-cov for the coverage -> CRAP pipeline.
+[toolchain]
+channel = "1.95.0"
+components = ["clippy", "rustfmt", "llvm-tools-preview"]

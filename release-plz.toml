@@ -1,0 +1,21 @@
+# release-plz (adapted from crap4rs). Inert until the release workflow is wired at
+# R5 distribution; present at R0 so the publishing shape is settled. The library
+# crates publish so adapter authors can pin; the bin ships via brew/cargo-dist.
+[workspace]
+dependencies_update = true
+git_tag_name = "{{ package }}-v{{ version }}"
+release_always = false
+semver_check = true
+release_commits = "^(feat|fix|perf|refactor)(\\(.+\\))?!?:"
+
+[[package]]
+name = "ctide-json"          # the FROZEN --json contract (g4) — first to stabilize (R1)
+changelog_path = "crates/ctide-json/CHANGELOG.md"
+
+[[package]]
+name = "ctide-core"
+changelog_path = "crates/ctide-core/CHANGELOG.md"
+
+[[package]]
+name = "ctide-testkit"       # the conformance kit — publication timing is design-plan OQ #6
+changelog_path = "crates/ctide-testkit/CHANGELOG.md"

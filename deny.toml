@@ -1,0 +1,45 @@
+# cargo-deny — supply-chain policy + the zero-egress structural proof.
+# Adapted from crap4rs's deny.toml with the no-async/no-HTTP ban added and
+# `exclude-dev` scoping (ci-quality-framework.md §4.5, §8; design-plan §2/§8.6).
+
+[graph]
+all-features = true
+# Scope the bans to the SHIPPED binary's normal graph. cucumber-rs's async stack
+# (and the tokio dev-test in ctide-testkit) are dev-only and must NOT trip the
+# no-tokio ban — this carve-out is what makes the ban survivable. R0 proves it.
+exclude-dev = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Ecosystem-default allow-list (matches crap4rs + cute-dbt). The workspace ships
+# "MIT OR Apache-2.0" provisionally; the GPL-3.0-vs-MIT ruling (design-plan OQ #8)
+# is owner-pending and would add "GPL-3.0-only" here if chosen.
+version = 2
+allow = ["Apache-2.0", "MIT", "BSD-3-Clause", "ISC", "Unicode-3.0"]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"      # v0.x tolerance; promote to "deny" at v1.0 (crap4rs precedent)
+wildcards = "deny"
+allow-wildcard-paths = true     # in-workspace path deps are implicit-wildcard
+# ZERO-EGRESS / NO-RUNTIME structural proof: these may not enter the SHIPPED graph.
+# The runner wraps the external watchexec BINARY precisely so no async runtime is needed.
+deny = [
+    { name = "tokio" },
+    { name = "reqwest" },
+    { name = "hyper" },
+    { name = "isahc" },
+    { name = "ureq" },
+    { name = "surf" },
+    { name = "async-std" },
+    { name = "smol" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

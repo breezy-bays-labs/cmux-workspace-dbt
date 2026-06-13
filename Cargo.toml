@@ -1,0 +1,76 @@
+# cmux-terminal-ide (binary `ctide`) — the Rust workspace.
+#
+# Born "ctide" from crate one (the POSIX-sh `cide` dogfood in bin/ + lib/ is
+# strangled, not renamed — see docs/roadmap/rebrand-ctide.md). The GitHub repo
+# rename cmux-workspace-dbt -> cmux-terminal-ide is a deferred owner action; the
+# `repository` URL below is forward-looking. The shell dogfood coexists in this
+# same tree during the strangler migration (docs/roadmap/roadmap.md §3).
+#
+# The 8-crate DAG (docs/vision/design-plan.md §2; docs/roadmap/r1-walking-skeleton.md §1.1):
+#   ctide-core ──▶ ctide-json        (core depends on NOTHING in-workspace)
+#   ctide-mux-cmux ─▶ core + json
+#   ctide-adapters ─▶ core + json
+#   ctide-dbt / ctide-place-macos ─▶ core (+ json)   (stubs at R0)
+#   ctide-testkit ─▶ core + json + mux-cmux          (FakeMux, fixtures, replay)
+#   ctide (bin)    ─▶ everything; nothing depends on it
+[workspace]
+resolver = "2"
+members = [
+    "crates/ctide-core",
+    "crates/ctide-json",
+    "crates/ctide-mux-cmux",
+    "crates/ctide-adapters",
+    "crates/ctide-dbt",
+    "crates/ctide-place-macos",
+    "crates/ctide-testkit",
+    "crates/ctide",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"                 # MSRV floor (cucumber 0.22 dev-dep needs 1.88)
+# PROVISIONAL license — design-plan named GPL-3.0-only, but crap4rs + cute-dbt ship
+# MIT OR Apache-2.0. Using the ecosystem default to keep cargo-deny consistent and
+# unblock the scaffold; owner ruling pending (design-plan OQ #8) before the public tap.
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/breezy-bays-labs/cmux-terminal-ide"
+authors = ["Christopher Bays <cmbays@breezybayslabs.com>"]
+
+# ── Workspace dependency budget (HARD constraint, not a guideline; design-plan §2, risk #4) ──
+# NO tokio, NO HTTP client, NO sqlite in the SHIPPED graph. cargo-deny (deny.toml) +
+# the dep-budget lint enforce it; cucumber/tokio are DEV-ONLY, carved out via exclude-dev.
+# Every version pins once here; crates reference `{ workspace = true }`.
+[workspace.dependencies]
+# ── In-workspace crates ──
+ctide-core        = { path = "crates/ctide-core",        version = "0.1.0" }
+ctide-json        = { path = "crates/ctide-json",        version = "0.1.0" }
+ctide-mux-cmux    = { path = "crates/ctide-mux-cmux",    version = "0.1.0" }
+ctide-adapters    = { path = "crates/ctide-adapters",    version = "0.1.0" }
+ctide-dbt         = { path = "crates/ctide-dbt",         version = "0.1.0" }
+ctide-place-macos = { path = "crates/ctide-place-macos", version = "0.1.0" }
+ctide-testkit     = { path = "crates/ctide-testkit",     version = "0.1.0" }
+
+# ── Shipped deps (resolved as the verbs that use them land in R1+) ──
+clap       = { version = "4", features = ["derive", "string"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+toml       = { version = "0.8" }
+thiserror  = { version = "2" }
+jiff       = { version = "0.1" }                              # timestamps; normalized before diff
+uuid       = { version = "1", default-features = false, features = ["v4", "serde"] }
+rustix     = { version = "0.38", features = ["fs", "process"] }   # flock; std exposes none
+url        = { version = "2" }
+objc2      = { version = "0.5" }                              # macOS-only, ctide-place-macos
+
+# ── Dev-only (carved out of the cargo-deny no-async ban via exclude-dev = true) ──
+tokio             = { version = "1", features = ["macros", "rt-multi-thread"] }
+cucumber          = { version = "0.22" }
+proptest          = { version = "1" }
+insta             = { version = "1", features = ["json"] }
+pretty_assertions = { version = "1" }
+tempfile          = { version = "3" }
+assert_cmd        = { version = "2" }
+
+[profile.release]
+strip = true            # lightweight single binary (design-plan §10)
+lto = "thin"

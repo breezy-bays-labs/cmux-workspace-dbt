@@ -1,0 +1,16 @@
+[package]
+name = "ctide-adapters"
+description = "ctide tool adapters (editor/explorer/vcs/runner/theme/...), one feature-gated module per tool."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# One feature-gated module per swappable tool, each implementing a ctide-core
+# port (helix Editor, yazi Explorer, lazygit Vcs, watchexec/bacon Runner, ...).
+# Each adapter ships an AdapterManifest with an EgressLabel (egress-labels lint).
+[dependencies]
+ctide-core = { workspace = true }
+ctide-json = { workspace = true }

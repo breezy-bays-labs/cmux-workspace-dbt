@@ -1,0 +1,26 @@
+[package]
+name = "ctide"
+description = "cmux-terminal-ide — a lightweight, agent-native terminal IDE composed on cmux."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+default-run = "ctide"
+
+[[bin]]
+name = "ctide"
+path = "src/main.rs"
+
+# The composition root: clap + wiring ONLY. Depends on everything; NOTHING in the
+# workspace depends on the binary (the dependency rule the dependency-rule gate
+# protects). The explicit `From<&DomainType> for ctide_json::*` impls live here
+# (g4). clap + the rest arrive with the doctor verb at R1.
+[dependencies]
+ctide-core        = { workspace = true }
+ctide-json        = { workspace = true }
+ctide-mux-cmux    = { workspace = true }
+ctide-adapters    = { workspace = true }
+ctide-dbt         = { workspace = true }
+ctide-place-macos = { workspace = true }

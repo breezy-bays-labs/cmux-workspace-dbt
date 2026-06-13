@@ -1,0 +1,17 @@
+[package]
+name = "ctide-mux-cmux"
+description = "The cmux adapter for ctide's Multiplexer port — the quirk vault."
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# Implements ctide-core's Multiplexer port over the cmux unix socket. Every
+# hard-won cmux quirk (tree --all global enumeration, OK-line parsing, caller
+# protection, ghost windows, cwd-merge) is encapsulated HERE and nowhere else
+# (the quirk-vault lint enforces this). Earns serde_json + rustix in R1.
+[dependencies]
+ctide-core = { workspace = true }
+ctide-json = { workspace = true }
