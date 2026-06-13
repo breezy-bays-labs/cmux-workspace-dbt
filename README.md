@@ -1,6 +1,22 @@
-# cmux-workspace-dbt (`cwd`)
+# cmux-terminal-ide (`ctide`)
 
-[![ci](https://github.com/breezy-bays-labs/cmux-workspace-dbt/actions/workflows/ci.yml/badge.svg)](https://github.com/breezy-bays-labs/cmux-workspace-dbt/actions/workflows/ci.yml)
+[![ci](https://github.com/breezy-bays-labs/cmux-terminal-ide/actions/workflows/ci.yml/badge.svg)](https://github.com/breezy-bays-labs/cmux-terminal-ide/actions/workflows/ci.yml)
+
+**ctide** is a lightweight, agent-native terminal IDE composed on
+[cmux](https://github.com/manaflow-ai/cmux) — spaces, roles, review queues, and
+vertical recipes (base · dbt · rust-dev) over the only multiplexer with native
+AI-agent primitives. The product vision and architecture live in
+[`docs/vision/`](docs/vision/); the build plan and progress in
+[`docs/roadmap/`](docs/roadmap/) (running log: [`build-log.md`](docs/roadmap/build-log.md)).
+
+> **Status.** The Rust `ctide` workspace is live (`crates/ctide-*`; `ctide doctor`
+> works against cmux) and is being built out per the
+> [roadmap](docs/roadmap/roadmap.md), strangling the Phase-0 POSIX-sh dogfood
+> documented below. MIT licensed (see [LICENSE](LICENSE)).
+
+---
+
+## Phase-0 dogfood — `cwd` (dbt workspace tooling)
 
 An opinionated **cmux** workspace for dbt development on macOS: select a model and
 your whole workspace — editor, file tree, diff viewer, and (when the data axis
@@ -9,8 +25,8 @@ enables it) a read-only SQL preview — follows it. This is the orchestration gl
 [cute-dbt](https://github.com/breezy-bays-labs/cute-dbt)) and *not* the warehouse
 client (harlequin, off the shelf).
 
-> **Status: Phase 0** — hardened POSIX scripts, battle-tested before productizing.
-> The Rust `cwd` binary is Phase 1.
+> **Status: Phase 0** — hardened POSIX scripts, battle-tested, now being strangled
+> into the Rust `ctide` (see the [roadmap](docs/roadmap/roadmap.md)).
 
 ## What it does — quick reference
 
@@ -101,8 +117,8 @@ Run `cwd doctor` to see all three axes resolved for the current workspace.
 ## Setup
 
 ```sh
-git clone https://github.com/breezy-bays-labs/cmux-workspace-dbt ~/github/cmux-workspace-dbt
-cd ~/github/cmux-workspace-dbt
+git clone https://github.com/breezy-bays-labs/cmux-terminal-ide ~/github/cmux-terminal-ide
+cd ~/github/cmux-terminal-ide
 ./install.sh --profile bare   # clean distributable (default); or: --profile stow
 ```
 
