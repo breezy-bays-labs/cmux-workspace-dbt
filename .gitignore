@@ -6,6 +6,9 @@ state/
 .DS_Store
 err.tmp
 
+# Fetched upstream cmux docs snapshot (third-party content; cite URLs instead of vendoring)
+docs/vision/research/.tmp-cmux-docs/
+
 # Session scaffolding (pipeline focus notes etc.); never committed to the public repo
 .claude/
 
