@@ -166,11 +166,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-rust
-        with:
-          # x86_64 musl is native-arch on the x86 runner: needs only musl-tools,
-          # no cross-linker. aarch64-musl cross-link is deferred until a real Linux
-          # mux adapter exists (r1-walking-skeleton §1.7 musl note, option c).
-          targets: x86_64-unknown-linux-musl
+      - name: Add the musl target to the pinned toolchain
+        # rust-toolchain.toml pins 1.95.0, a distinct toolchain from dtolnay's
+        # @stable — so the target must be added against the PINNED toolchain (a
+        # bare `rustup target add` in the repo dir resolves to 1.95.0), else
+        # rustc reports "can't find crate for std". x86_64 musl is native-arch on
+        # the x86 runner: needs only musl-tools, no cross-linker. aarch64-musl
+        # cross-link is deferred (r1-walking-skeleton §1.7 musl note, option c).
+        run: rustup target add x86_64-unknown-linux-musl
       - name: Install musl-tools
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - run: cargo build --workspace --locked --target x86_64-unknown-linux-musl
